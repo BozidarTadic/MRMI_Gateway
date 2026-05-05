@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package mrmi.v1;
+
+option go_package = "MRMI_Gateway/proto/mrmi/v1;mrmiv1";
+
+message Envelope {
+  string idempotency_key = 1;
+  bytes sender_identity = 2;
+  bytes recipient_identity = 3;
+  string sender_region = 4;
+  string recipient_region = 5;
+  uint32 trust_tier = 6;
+  uint64 sequence_number = 7;
+  bytes payload = 8;
+  uint32 padded_to = 9;
+  int64 timestamp = 10;
+  bytes signature = 11;
+}
+
+message PolicyResult {
+  enum Decision {
+    DECISION_UNSPECIFIED = 0;
+    ALLOW = 1;
+    DENY = 2;
+  }
+
+  Decision decision = 1;
+  string reason = 2;
+  string profile = 3;
+  string applicable_law = 4;
+}
+
+message IdentityClaim {
+  string user_id = 1;
+  string region = 2;
+  bytes public_key = 3;
+  uint32 trust_tier = 4;
+  int64 expires_at_unix = 5;
+  repeated string signed_claims = 6;
+}
+
+message AuditEntry {
+  uint64 seq = 1;
+  int64 timestamp_unix_ms = 2;
+  PolicyResult.Decision decision = 3;
+  string sender_region = 4;
+  string recipient_region = 5;
+  string policy_version = 6;
+  string profile = 7;
+  string applicable_law = 8;
+  uint32 dedup_ttl_hours = 9;
+  bytes prev_hash = 10;
+  bytes entry_hash = 11;
+}
+
+message ProfileConfig {
+  string name = 1;
+  uint32 padding_bucket_bytes = 2;
+  uint32 timing_jitter_max_ms = 3;
+  uint32 dedup_ttl_hours = 4;
+  uint32 dummy_traffic_interval_seconds = 5;
+  bool log_all_decisions = 6;
+}
+
+message BlacklistEntry {
+  string node_id = 1;
+  string reason = 2;
+  repeated bytes signatures = 3;
+  int64 created_at_unix = 4;
+}
+
+message CRLEntry {
+  string node_id = 1;
+  string certificate_serial = 2;
+  string reason = 3;
+  int64 revoked_at_unix = 4;
+}
+
+message SendEnvelopeRequest {
+  Envelope envelope = 1;
+}
+
+message SendEnvelopeResponse {
+  PolicyResult.Decision decision = 1;
+  string reason = 2;
+  string profile = 3;
+  string node_id = 4;
+  string audit_root_hash = 5;
+}
+
+message GetNodeInfoRequest {}
+
+message GetNodeInfoResponse {
+  string node_id = 1;
+  string region = 2;
+  string applicable_law = 3;
+  string profile = 4;
+}
+
+service GatewayService {
+  rpc SendEnvelope(SendEnvelopeRequest) returns (SendEnvelopeResponse);
+  rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+}
