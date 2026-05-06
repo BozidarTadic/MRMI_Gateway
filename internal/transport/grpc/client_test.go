@@ -7,6 +7,7 @@ import (
 
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/dedup"
 	"MRMI_Gateway/internal/policy"
 )
 
@@ -20,7 +21,7 @@ func TestClientServerRoundTrip(t *testing.T) {
 		t.Fatalf("create policy engine: %v", err)
 	}
 
-	server, err := NewServer(cfg.Network.GRPCListenAddr, NewGateway(cfg, engine, auditLog))
+	server, err := NewServer(cfg.Network.GRPCListenAddr, NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL)))
 	if err != nil {
 		t.Fatalf("create grpc server: %v", err)
 	}
