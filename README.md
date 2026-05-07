@@ -49,21 +49,22 @@ Full architecture: [docs/ADR_v0.5.md](docs/ADR_v0.5.md)
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.1 (in progress)
+## Current Status — v0.1 (Sprint 1 complete)
 
 - [x] Protobuf contracts (`proto/mrmi/v1/contracts.proto`)
 - [x] Config model — TOML parser, 3 profiles, `Config.Validate()`
-- [x] Policy engine — allow/deny by region + trust tier
+- [x] Policy engine — allow/deny by region + trust tier, all decisions audited
 - [x] Merkle audit log — SHA-256 chained, `Verify()`, `RootHash()`
 - [x] HTTP server — `/healthz`, `/readyz`, `/.well-known/mrmi-audit`
 - [x] gRPC transport — server + client, `GatewayService` handler
 - [x] App wiring + graceful shutdown
-- [ ] Dedup index (idempotency key store with TTL)
-- [ ] mTLS on all inter-node gRPC
-- [ ] Timing jitter + payload padding (config wired, not applied)
-- [ ] DNS TXT root hash publisher
+- [x] Dedup index — idempotency key store with TTL, duplicate decisions logged to audit
+- [x] Local two-node RS/RU corridor — integration test + local configs
+- [ ] mTLS on all inter-node gRPC (Sprint 2)
+- [ ] Timing jitter + payload padding (config wired, not applied — Sprint 2)
+- [ ] DNS TXT root hash publisher (Sprint 2)
+- [ ] Envelope forwarding between nodes (Sprint 2)
 - [ ] .NET SDK (Milestone 4)
-- [ ] Integration tests against §11 acceptance criteria
 - [ ] CLI reference client (open for contributors)
 - [ ] Java SDK (open for contributors)
 
@@ -77,7 +78,7 @@ cd mrmi-gateway
 go run ./cmd/mrmi-gateway -config configs/node.balanced.toml
 ```
 
-This starts the node on `:8080` (HTTP) and `:9090` (gRPC) with the balanced compliance profile.
+This starts the node on `:8080` (HTTP) and `:7777` (gRPC) with the balanced compliance profile.
 
 **Verify the node is up:**
 
@@ -86,17 +87,25 @@ curl http://localhost:8080/healthz
 curl http://localhost:8080/.well-known/mrmi-audit
 ```
 
+**Run the full test suite:**
+
+```bash
+go test ./...
+```
+
+**Local two-node corridor (RS + RU):** see [docs/LOCAL_TWO_NODE_GUIDE.md](docs/LOCAL_TWO_NODE_GUIDE.md).
+
 ## Configuration
 
-Nodes are configured via signed TOML files. Three profiles ship out of the box:
+Nodes are configured via signed TOML files. Three compliance profiles are available (`strict`, `balanced`, `performance`); the shipped configs use `balanced`:
 
-| Profile | Intended Use |
+| File | Purpose |
 |---|---|
-| `configs/node.strict.toml` | 152-ФЗ / Kazakhstan — maximum compliance |
-| `configs/node.balanced.toml` | Default — reasonable compliance + performance |
-| `configs/node.performance.toml` | Low-latency corridors, relaxed padding |
+| `configs/node.balanced.toml` | Single RS node — default starting point |
+| `configs/node.rs.local.toml` | RS node for local two-node corridor testing |
+| `configs/node.ru.local.toml` | RU node for local two-node corridor testing |
 
-Full TOML reference in [docs/ADR_v0.5.md — Appendix A](docs/ADR_v0.5.md#appendix-a--full-toml-configuration-examples).
+Profile definitions (dedup TTL, jitter, padding, dummy traffic rates) live in `internal/config/presets.go`. Full TOML reference in [docs/ADR_v0.5.md — Appendix A](docs/ADR_v0.5.md#appendix-a--full-toml-configuration-examples).
 
 ## Repository Layout
 
@@ -104,14 +113,16 @@ Full TOML reference in [docs/ADR_v0.5.md — Appendix A](docs/ADR_v0.5.md#append
 cmd/mrmi-gateway/   — process entrypoint
 internal/
   app/              — wiring: audit, policy, HTTP, gRPC, shutdown
-  audit/            — Merkle chain log
-  config/           — TOML parser + validation
-  policy/           — policy engine
-  server/           — HTTP endpoints
-  transport/grpc/   — gRPC server + client
+  audit/            — Merkle chain log (SHA-256, Verify, RootHash)
+  config/           — TOML parser, validation, profile presets
+  dedup/            — idempotency key store with TTL + Purge
+  integration/      — multi-node end-to-end tests
+  policy/           — policy engine (region allow/deny, trust tier)
+  server/           — HTTP endpoints (healthz, readyz, mrmi-audit)
+  transport/grpc/   — gRPC server + client, JSON codec
 proto/mrmi/v1/      — protobuf contracts
-configs/            — operator config examples
-docs/               — ADR and design documents
+configs/            — operator TOML configs
+docs/               — ADR, sprint plans, operator guides
 ```
 
 ## Contributing
