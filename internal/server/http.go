@@ -30,12 +30,7 @@ func NewHTTPServer(cfg config.Config, engine *policy.Engine, auditLog *audit.Log
 		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
-		decision := engine.Evaluate(policy.Request{
-			SenderRegion:    cfg.Node.Region,
-			RecipientRegion: cfg.Node.Region,
-			TrustTier:       cfg.Policy.Inbound.MinTrustTier,
-		})
-		if decision.Decision != policy.DecisionAllow {
+		if engine == nil {
 			http.Error(w, "policy engine not ready", http.StatusServiceUnavailable)
 			return
 		}
