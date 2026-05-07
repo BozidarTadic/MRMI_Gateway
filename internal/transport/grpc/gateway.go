@@ -36,6 +36,8 @@ func (g *Gateway) SendEnvelope(ctx context.Context, request *SendEnvelopeRequest
 	}
 
 	if g.dedup.SeenOrAdd(request.Envelope.IdempotencyKey) {
+		g.audit.Append(g.cfg, audit.DecisionDuplicate,
+			request.Envelope.SenderRegion, request.Envelope.RecipientRegion)
 		return &SendEnvelopeResponse{
 			Decision:      "DUPLICATE",
 			Reason:        "idempotency_key already processed",

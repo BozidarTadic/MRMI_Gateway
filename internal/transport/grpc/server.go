@@ -34,6 +34,10 @@ func (s *Server) Serve() error {
 	return s.server.Serve(s.listener)
 }
 
+func (s *Server) Addr() string {
+	return s.listener.Addr().String()
+}
+
 func (s *Server) Shutdown(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {

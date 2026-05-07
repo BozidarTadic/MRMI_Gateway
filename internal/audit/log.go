@@ -14,8 +14,9 @@ import (
 type Decision string
 
 const (
-	DecisionAllow Decision = "ALLOW"
-	DecisionDeny  Decision = "DENY"
+	DecisionAllow     Decision = "ALLOW"
+	DecisionDeny      Decision = "DENY"
+	DecisionDuplicate Decision = "DUPLICATE"
 )
 
 type Entry struct {
