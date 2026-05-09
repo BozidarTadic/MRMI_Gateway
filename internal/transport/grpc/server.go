@@ -2,9 +2,12 @@ package grpctransport
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/encoding"
 )
 
@@ -13,7 +16,9 @@ type Server struct {
 	listener net.Listener
 }
 
-func NewServer(listenAddr string, gateway GatewayService) (*Server, error) {
+// NewServer creates a gRPC server on listenAddr and registers svc.
+// Pass a non-nil tlsCfg to enable TLS; pass nil for insecure (development only).
+func NewServer(listenAddr string, svc GatewayService, tlsCfg *tls.Config) (*Server, error) {
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return nil, err
@@ -21,8 +26,16 @@ func NewServer(listenAddr string, gateway GatewayService) (*Server, error) {
 
 	encoding.RegisterCodec(jsonCodec{})
 
-	server := grpc.NewServer(grpc.ForceServerCodec(jsonCodec{}))
-	RegisterGatewayService(server, gateway)
+	var opts []grpc.ServerOption
+	if tlsCfg != nil {
+		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+	} else {
+		opts = append(opts, grpc.Creds(insecure.NewCredentials()))
+	}
+	opts = append(opts, grpc.ForceServerCodec(jsonCodec{}))
+
+	server := grpc.NewServer(opts...)
+	RegisterGatewayService(server, svc)
 
 	return &Server{
 		server:   server,

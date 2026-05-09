@@ -23,6 +23,7 @@ message PolicyResult {
     DECISION_UNSPECIFIED = 0;
     ALLOW = 1;
     DENY = 2;
+    DUPLICATE = 3;
   }
 
   Decision decision = 1;

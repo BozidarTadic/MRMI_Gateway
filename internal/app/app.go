@@ -9,6 +9,7 @@ import (
 
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/dedup"
 	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/server"
@@ -25,8 +26,10 @@ func Run(ctx context.Context, cfg config.Config) error {
 	dedupIndex := dedup.New(cfg.Profile.DedupTTL)
 	go runPurge(ctx, dedupIndex)
 
+	gw := core.NewGateway(cfg, engine, auditLog, dedupIndex)
+
 	httpServer := server.NewHTTPServer(cfg, engine, auditLog)
-	grpcServer, err := grpctransport.NewServer(cfg.Network.GRPCListenAddr, grpctransport.NewGateway(cfg, engine, auditLog, dedupIndex))
+	grpcServer, err := grpctransport.NewServer(cfg.Network.GRPCListenAddr, grpctransport.NewAdapter(gw), nil)
 	if err != nil {
 		return fmt.Errorf("create grpc server: %w", err)
 	}

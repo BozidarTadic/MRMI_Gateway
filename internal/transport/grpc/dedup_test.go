@@ -10,6 +10,7 @@ import (
 
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/dedup"
 	"MRMI_Gateway/internal/policy"
 )
@@ -26,7 +27,8 @@ func startTestServer(t *testing.T) (addr string, client *Client) {
 		t.Fatalf("create policy engine: %v", err)
 	}
 
-	srv, err := NewServer(":0", NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL)))
+	gw := core.NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL))
+	srv, err := NewServer(":0", NewAdapter(gw), nil)
 	if err != nil {
 		t.Fatalf("create grpc server: %v", err)
 	}
@@ -43,7 +45,7 @@ func startTestServer(t *testing.T) (addr string, client *Client) {
 	dialCtx, dialCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer dialCancel()
 
-	c, err := Dial(dialCtx, addr)
+	c, err := Dial(dialCtx, addr, nil)
 	if err != nil {
 		t.Fatalf("dial grpc server at %s: %v", addr, err)
 	}

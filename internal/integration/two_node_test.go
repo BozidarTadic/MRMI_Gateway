@@ -10,6 +10,7 @@ import (
 
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/dedup"
 	"MRMI_Gateway/internal/policy"
 	grpctransport "MRMI_Gateway/internal/transport/grpc"
@@ -34,10 +35,8 @@ func startNode(t *testing.T, cfg config.Config) node {
 		t.Fatalf("startNode %s: policy engine: %v", cfg.Node.NodeID, err)
 	}
 
-	srv, err := grpctransport.NewServer(
-		":0",
-		grpctransport.NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL)),
-	)
+	gw := core.NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL))
+	srv, err := grpctransport.NewServer(":0", grpctransport.NewAdapter(gw), nil)
 	if err != nil {
 		t.Fatalf("startNode %s: grpc server: %v", cfg.Node.NodeID, err)
 	}
@@ -51,7 +50,7 @@ func startNode(t *testing.T, cfg config.Config) node {
 
 	dialCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	client, err := grpctransport.Dial(dialCtx, srv.Addr())
+	client, err := grpctransport.Dial(dialCtx, srv.Addr(), nil)
 	if err != nil {
 		t.Fatalf("startNode %s: dial %s: %v", cfg.Node.NodeID, srv.Addr(), err)
 	}

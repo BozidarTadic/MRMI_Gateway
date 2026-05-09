@@ -7,13 +7,14 @@ import (
 
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/dedup"
 	"MRMI_Gateway/internal/policy"
 )
 
 func TestClientServerRoundTrip(t *testing.T) {
 	cfg := config.DefaultBalancedConfig()
-	cfg.Network.GRPCListenAddr = "127.0.0.1:17777"
+	cfg.Network.GRPCListenAddr = ":0"
 
 	auditLog := audit.New()
 	engine, err := policy.NewEngine(cfg, auditLog)
@@ -21,7 +22,8 @@ func TestClientServerRoundTrip(t *testing.T) {
 		t.Fatalf("create policy engine: %v", err)
 	}
 
-	server, err := NewServer(cfg.Network.GRPCListenAddr, NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL)))
+	gw := core.NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL))
+	server, err := NewServer(":0", NewAdapter(gw), nil)
 	if err != nil {
 		t.Fatalf("create grpc server: %v", err)
 	}
@@ -38,7 +40,7 @@ func TestClientServerRoundTrip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	client, err := Dial(ctx, cfg.Network.GRPCListenAddr)
+	client, err := Dial(ctx, server.Addr(), nil)
 	if err != nil {
 		t.Fatalf("dial grpc server: %v", err)
 	}

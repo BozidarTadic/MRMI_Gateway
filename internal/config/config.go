@@ -1,14 +1,14 @@
 package config
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/BurntSushi/toml"
 )
 
 type Config struct {
@@ -91,9 +91,9 @@ func Load(path string) (Config, error) {
 	}
 	defer file.Close()
 
-	raw, err := parseTOML(file)
-	if err != nil {
-		return Config{}, err
+	var raw rawTOML
+	if _, err := toml.NewDecoder(file).Decode(&raw); err != nil {
+		return Config{}, fmt.Errorf("parse toml: %w", err)
 	}
 
 	cfg := DefaultConfigForProfile(raw.profileName())
@@ -133,388 +133,149 @@ func (c Config) Validate() error {
 	return nil
 }
 
-type rawConfig struct {
-	node struct {
-		nodeID        string
-		region        string
-		operatorID    string
-		policyVersion string
-		applicableLaw string
-		signedBy      string
-	}
-	profile struct {
-		name string
-	}
-	profileOverride struct {
-		paddingBucketBytes         int
-		timingJitterMaxMs          int
-		dedupTTLH                  int
-		dummyTrafficIntervalSecond int
-	}
-	policy struct {
-		outbound struct {
-			allowTo      []string
-			denyTo       []string
-			storeLocally *bool
-		}
-		inbound struct {
-			minTrustTier *uint32
-		}
-		audit struct {
-			logAllDecisions *bool
-			logBackend      string
-			exportOperator  *bool
-			dnsPublish      *bool
-			dnsIntervalS    int
-			httpsWellKnown  *bool
-		}
-	}
-	network struct {
-		listenAddr       string
-		grpcPort         int
-		httpListenAddr   string
-		httpPort         int
-		metricsAddr      string
-		metricsPort      int
-		shutdownTimeoutS int
-	}
+// rawTOML mirrors the TOML file structure and is decoded directly by the library.
+// Duration fields are kept as integers (seconds/milliseconds/hours) matching the
+// TOML key names; apply() converts them to time.Duration.
+type rawTOML struct {
+	Node struct {
+		NodeID        string `toml:"node_id"`
+		Region        string `toml:"region"`
+		OperatorID    string `toml:"operator_id"`
+		PolicyVersion string `toml:"policy_version"`
+		ApplicableLaw string `toml:"applicable_law"`
+		SignedBy      string `toml:"signed_by"`
+	} `toml:"node"`
+
+	Profile struct {
+		Name string `toml:"name"`
+	} `toml:"profile"`
+
+	ProfileOverride struct {
+		PaddingBucketBytes         int `toml:"padding_bucket_bytes"`
+		TimingJitterMaxMs          int `toml:"timing_jitter_max_ms"`
+		DedupTTLH                  int `toml:"dedup_ttl_h"`
+		DummyTrafficIntervalSecond int `toml:"dummy_traffic_interval_s"`
+	} `toml:"profile_override"`
+
+	Policy struct {
+		Outbound struct {
+			AllowTo      []string `toml:"allow_to"`
+			DenyTo       []string `toml:"deny_to"`
+			StoreLocally *bool    `toml:"store_locally"`
+		} `toml:"outbound"`
+		Inbound struct {
+			MinTrustTier *uint32 `toml:"min_trust_tier"`
+		} `toml:"inbound"`
+		Audit struct {
+			LogAllDecisions *bool  `toml:"log_all_decisions"`
+			LogBackend      string `toml:"log_backend"`
+			ExportOperator  *bool  `toml:"export_to_operator"`
+			DNSPublish      *bool  `toml:"dns_txt_publish"`
+			DNSIntervalS    int    `toml:"dns_txt_interval_s"`
+			HTTPSWellKnown  *bool  `toml:"https_well_known"`
+		} `toml:"audit"`
+	} `toml:"policy"`
+
+	Network struct {
+		ListenAddr       string `toml:"listen_addr"`
+		GRPCPort         int    `toml:"grpc_port"`
+		HTTPListenAddr   string `toml:"http_listen_addr"`
+		HTTPPort         int    `toml:"http_port"`
+		MetricsAddr      string `toml:"metrics_addr"`
+		MetricsPort      int    `toml:"metrics_port"`
+		ShutdownTimeoutS int    `toml:"shutdown_timeout_s"`
+	} `toml:"network"`
 }
 
-func (r rawConfig) profileName() string {
-	name := strings.TrimSpace(r.profile.name)
-	if name == "" {
-		return "balanced"
+func (r rawTOML) profileName() string {
+	if name := strings.TrimSpace(r.Profile.Name); name != "" {
+		return name
 	}
-	return name
+	return "balanced"
 }
 
-func (r rawConfig) apply(cfg *Config) {
-	if value := strings.TrimSpace(r.node.nodeID); value != "" {
-		cfg.Node.NodeID = value
+func (r rawTOML) apply(cfg *Config) {
+	if v := strings.TrimSpace(r.Node.NodeID); v != "" {
+		cfg.Node.NodeID = v
 	}
-	if value := strings.TrimSpace(r.node.region); value != "" {
-		cfg.Node.Region = value
+	if v := strings.TrimSpace(r.Node.Region); v != "" {
+		cfg.Node.Region = v
 	}
-	if value := strings.TrimSpace(r.node.operatorID); value != "" {
-		cfg.Node.OperatorID = value
+	if v := strings.TrimSpace(r.Node.OperatorID); v != "" {
+		cfg.Node.OperatorID = v
 	}
-	if value := strings.TrimSpace(r.node.policyVersion); value != "" {
-		cfg.Node.PolicyVersion = value
+	if v := strings.TrimSpace(r.Node.PolicyVersion); v != "" {
+		cfg.Node.PolicyVersion = v
 	}
-	if value := strings.TrimSpace(r.node.applicableLaw); value != "" {
-		cfg.Node.ApplicableLaw = value
+	if v := strings.TrimSpace(r.Node.ApplicableLaw); v != "" {
+		cfg.Node.ApplicableLaw = v
 	}
-	if value := strings.TrimSpace(r.node.signedBy); value != "" {
-		cfg.Node.SignedBy = value
+	if v := strings.TrimSpace(r.Node.SignedBy); v != "" {
+		cfg.Node.SignedBy = v
 	}
 
 	cfg.Profile.Name = r.profileName()
 
-	if r.profileOverride.paddingBucketBytes > 0 {
-		cfg.Profile.PaddingBucket = r.profileOverride.paddingBucketBytes
+	if r.ProfileOverride.PaddingBucketBytes > 0 {
+		cfg.Profile.PaddingBucket = r.ProfileOverride.PaddingBucketBytes
 	}
-	if r.profileOverride.timingJitterMaxMs > 0 {
-		cfg.Profile.TimingJitterMax = time.Duration(r.profileOverride.timingJitterMaxMs) * time.Millisecond
+	if r.ProfileOverride.TimingJitterMaxMs > 0 {
+		cfg.Profile.TimingJitterMax = time.Duration(r.ProfileOverride.TimingJitterMaxMs) * time.Millisecond
 	}
-	if r.profileOverride.dedupTTLH > 0 {
-		cfg.Profile.DedupTTL = time.Duration(r.profileOverride.dedupTTLH) * time.Hour
+	if r.ProfileOverride.DedupTTLH > 0 {
+		cfg.Profile.DedupTTL = time.Duration(r.ProfileOverride.DedupTTLH) * time.Hour
 	}
-	if r.profileOverride.dummyTrafficIntervalSecond > 0 {
-		cfg.Profile.DummyTrafficRate = time.Duration(r.profileOverride.dummyTrafficIntervalSecond) * time.Second
-	}
-
-	if r.policy.outbound.allowTo != nil {
-		cfg.Policy.Outbound.AllowTo = r.policy.outbound.allowTo
-	}
-	if r.policy.outbound.denyTo != nil {
-		cfg.Policy.Outbound.DenyTo = r.policy.outbound.denyTo
-	}
-	if r.policy.outbound.storeLocally != nil {
-		cfg.Policy.Outbound.StoreLocally = *r.policy.outbound.storeLocally
-	}
-	if r.policy.inbound.minTrustTier != nil {
-		cfg.Policy.Inbound.MinTrustTier = *r.policy.inbound.minTrustTier
-	}
-	if r.policy.audit.logAllDecisions != nil {
-		cfg.Policy.Audit.LogAllDecisions = *r.policy.audit.logAllDecisions
-	}
-	if value := strings.TrimSpace(r.policy.audit.logBackend); value != "" {
-		cfg.Policy.Audit.LogBackend = value
-	}
-	if r.policy.audit.exportOperator != nil {
-		cfg.Policy.Audit.ExportToOperator = *r.policy.audit.exportOperator
-	}
-	if r.policy.audit.dnsPublish != nil {
-		cfg.Policy.Audit.DNSTXTPublish = *r.policy.audit.dnsPublish
-	}
-	if r.policy.audit.dnsIntervalS > 0 {
-		cfg.Policy.Audit.DNSTXTInterval = time.Duration(r.policy.audit.dnsIntervalS) * time.Second
-	}
-	if r.policy.audit.httpsWellKnown != nil {
-		cfg.Policy.Audit.HTTPSWellKnown = *r.policy.audit.httpsWellKnown
+	if r.ProfileOverride.DummyTrafficIntervalSecond > 0 {
+		cfg.Profile.DummyTrafficRate = time.Duration(r.ProfileOverride.DummyTrafficIntervalSecond) * time.Second
 	}
 
-	if value := strings.TrimSpace(r.network.listenAddr); value != "" {
-		cfg.Network.GRPCListenAddr = value
-	} else if r.network.grpcPort > 0 {
-		cfg.Network.GRPCListenAddr = fmt.Sprintf(":%d", r.network.grpcPort)
+	if r.Policy.Outbound.AllowTo != nil {
+		cfg.Policy.Outbound.AllowTo = r.Policy.Outbound.AllowTo
 	}
-	if value := strings.TrimSpace(r.network.httpListenAddr); value != "" {
-		cfg.Network.HTTPListenAddr = value
-	} else if r.network.httpPort > 0 {
-		cfg.Network.HTTPListenAddr = fmt.Sprintf(":%d", r.network.httpPort)
+	if r.Policy.Outbound.DenyTo != nil {
+		cfg.Policy.Outbound.DenyTo = r.Policy.Outbound.DenyTo
 	}
-	if value := strings.TrimSpace(r.network.metricsAddr); value != "" {
-		cfg.Network.MetricsAddr = value
-	} else if r.network.metricsPort > 0 {
-		cfg.Network.MetricsAddr = fmt.Sprintf(":%d", r.network.metricsPort)
+	if r.Policy.Outbound.StoreLocally != nil {
+		cfg.Policy.Outbound.StoreLocally = *r.Policy.Outbound.StoreLocally
 	}
-	if r.network.shutdownTimeoutS > 0 {
-		cfg.Network.ShutdownTimeout = time.Duration(r.network.shutdownTimeoutS) * time.Second
+	if r.Policy.Inbound.MinTrustTier != nil {
+		cfg.Policy.Inbound.MinTrustTier = *r.Policy.Inbound.MinTrustTier
 	}
-}
-
-func parseTOML(file *os.File) (rawConfig, error) {
-	var raw rawConfig
-	var section string
-
-	scanner := bufio.NewScanner(file)
-	for lineNumber := 1; scanner.Scan(); lineNumber++ {
-		line := strings.TrimSpace(stripComment(scanner.Text()))
-		if line == "" {
-			continue
-		}
-
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			section = strings.TrimSpace(line[1 : len(line)-1])
-			continue
-		}
-
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			return raw, fmt.Errorf("line %d: expected key = value", lineNumber)
-		}
-
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-
-		if err := assignValue(&raw, section, key, value); err != nil {
-			return raw, fmt.Errorf("line %d: %w", lineNumber, err)
-		}
+	if r.Policy.Audit.LogAllDecisions != nil {
+		cfg.Policy.Audit.LogAllDecisions = *r.Policy.Audit.LogAllDecisions
+	}
+	if v := strings.TrimSpace(r.Policy.Audit.LogBackend); v != "" {
+		cfg.Policy.Audit.LogBackend = v
+	}
+	if r.Policy.Audit.ExportOperator != nil {
+		cfg.Policy.Audit.ExportToOperator = *r.Policy.Audit.ExportOperator
+	}
+	if r.Policy.Audit.DNSPublish != nil {
+		cfg.Policy.Audit.DNSTXTPublish = *r.Policy.Audit.DNSPublish
+	}
+	if r.Policy.Audit.DNSIntervalS > 0 {
+		cfg.Policy.Audit.DNSTXTInterval = time.Duration(r.Policy.Audit.DNSIntervalS) * time.Second
+	}
+	if r.Policy.Audit.HTTPSWellKnown != nil {
+		cfg.Policy.Audit.HTTPSWellKnown = *r.Policy.Audit.HTTPSWellKnown
 	}
 
-	if err := scanner.Err(); err != nil {
-		return raw, err
+	if v := strings.TrimSpace(r.Network.ListenAddr); v != "" {
+		cfg.Network.GRPCListenAddr = v
+	} else if r.Network.GRPCPort > 0 {
+		cfg.Network.GRPCListenAddr = fmt.Sprintf(":%d", r.Network.GRPCPort)
 	}
-
-	return raw, nil
-}
-
-func assignValue(raw *rawConfig, section, key, value string) error {
-	switch section {
-	case "node":
-		switch key {
-		case "node_id":
-			raw.node.nodeID = parseString(value)
-		case "region":
-			raw.node.region = parseString(value)
-		case "operator_id":
-			raw.node.operatorID = parseString(value)
-		case "policy_version":
-			raw.node.policyVersion = parseString(value)
-		case "applicable_law":
-			raw.node.applicableLaw = parseString(value)
-		case "signed_by":
-			raw.node.signedBy = parseString(value)
-		default:
-			return fmt.Errorf("unsupported node key %q", key)
-		}
-	case "profile":
-		if key != "name" {
-			return fmt.Errorf("unsupported profile key %q", key)
-		}
-		raw.profile.name = parseString(value)
-	case "profile_override":
-		intValue, err := parseInt(value)
-		if err != nil {
-			return err
-		}
-		switch key {
-		case "padding_bucket_bytes":
-			raw.profileOverride.paddingBucketBytes = intValue
-		case "timing_jitter_max_ms":
-			raw.profileOverride.timingJitterMaxMs = intValue
-		case "dedup_ttl_h":
-			raw.profileOverride.dedupTTLH = intValue
-		case "dummy_traffic_interval_s":
-			raw.profileOverride.dummyTrafficIntervalSecond = intValue
-		default:
-			return fmt.Errorf("unsupported profile_override key %q", key)
-		}
-	case "policy.outbound":
-		switch key {
-		case "allow_to":
-			values, err := parseStringArray(value)
-			if err != nil {
-				return err
-			}
-			raw.policy.outbound.allowTo = values
-		case "deny_to":
-			values, err := parseStringArray(value)
-			if err != nil {
-				return err
-			}
-			raw.policy.outbound.denyTo = values
-		case "store_locally":
-			boolValue, err := parseBool(value)
-			if err != nil {
-				return err
-			}
-			raw.policy.outbound.storeLocally = &boolValue
-		default:
-			return fmt.Errorf("unsupported policy.outbound key %q", key)
-		}
-	case "policy.inbound":
-		if key != "min_trust_tier" {
-			return fmt.Errorf("unsupported policy.inbound key %q", key)
-		}
-		intValue, err := parseInt(value)
-		if err != nil {
-			return err
-		}
-		uintValue := uint32(intValue)
-		raw.policy.inbound.minTrustTier = &uintValue
-	case "policy.audit":
-		switch key {
-		case "log_all_decisions":
-			boolValue, err := parseBool(value)
-			if err != nil {
-				return err
-			}
-			raw.policy.audit.logAllDecisions = &boolValue
-		case "log_backend":
-			raw.policy.audit.logBackend = parseString(value)
-		case "export_to_operator":
-			boolValue, err := parseBool(value)
-			if err != nil {
-				return err
-			}
-			raw.policy.audit.exportOperator = &boolValue
-		case "dns_txt_publish":
-			boolValue, err := parseBool(value)
-			if err != nil {
-				return err
-			}
-			raw.policy.audit.dnsPublish = &boolValue
-		case "dns_txt_interval_s":
-			intValue, err := parseInt(value)
-			if err != nil {
-				return err
-			}
-			raw.policy.audit.dnsIntervalS = intValue
-		case "https_well_known":
-			boolValue, err := parseBool(value)
-			if err != nil {
-				return err
-			}
-			raw.policy.audit.httpsWellKnown = &boolValue
-		default:
-			return fmt.Errorf("unsupported policy.audit key %q", key)
-		}
-	case "network":
-		switch key {
-		case "listen_addr":
-			raw.network.listenAddr = parseString(value)
-		case "grpc_port":
-			intValue, err := parseInt(value)
-			if err != nil {
-				return err
-			}
-			raw.network.grpcPort = intValue
-		case "http_listen_addr":
-			raw.network.httpListenAddr = parseString(value)
-		case "http_port":
-			intValue, err := parseInt(value)
-			if err != nil {
-				return err
-			}
-			raw.network.httpPort = intValue
-		case "metrics_addr":
-			raw.network.metricsAddr = parseString(value)
-		case "metrics_port":
-			intValue, err := parseInt(value)
-			if err != nil {
-				return err
-			}
-			raw.network.metricsPort = intValue
-		case "shutdown_timeout_s":
-			intValue, err := parseInt(value)
-			if err != nil {
-				return err
-			}
-			raw.network.shutdownTimeoutS = intValue
-		default:
-			return fmt.Errorf("unsupported network key %q", key)
-		}
-	default:
-		return fmt.Errorf("unsupported section %q", section)
+	if v := strings.TrimSpace(r.Network.HTTPListenAddr); v != "" {
+		cfg.Network.HTTPListenAddr = v
+	} else if r.Network.HTTPPort > 0 {
+		cfg.Network.HTTPListenAddr = fmt.Sprintf(":%d", r.Network.HTTPPort)
 	}
-
-	return nil
-}
-
-func stripComment(line string) string {
-	inString := false
-	for i, r := range line {
-		switch r {
-		case '"':
-			inString = !inString
-		case '#':
-			if !inString {
-				return line[:i]
-			}
-		}
+	if v := strings.TrimSpace(r.Network.MetricsAddr); v != "" {
+		cfg.Network.MetricsAddr = v
+	} else if r.Network.MetricsPort > 0 {
+		cfg.Network.MetricsAddr = fmt.Sprintf(":%d", r.Network.MetricsPort)
 	}
-	return line
-}
-
-func parseString(value string) string {
-	value = strings.TrimSpace(value)
-	return strings.Trim(value, `"`)
-}
-
-func parseInt(value string) (int, error) {
-	intValue, err := strconv.Atoi(strings.TrimSpace(value))
-	if err != nil {
-		return 0, fmt.Errorf("invalid integer %q", value)
+	if r.Network.ShutdownTimeoutS > 0 {
+		cfg.Network.ShutdownTimeout = time.Duration(r.Network.ShutdownTimeoutS) * time.Second
 	}
-	return intValue, nil
-}
-
-func parseBool(value string) (bool, error) {
-	boolValue, err := strconv.ParseBool(strings.TrimSpace(value))
-	if err != nil {
-		return false, fmt.Errorf("invalid boolean %q", value)
-	}
-	return boolValue, nil
-}
-
-func parseStringArray(value string) ([]string, error) {
-	value = strings.TrimSpace(value)
-	if !strings.HasPrefix(value, "[") || !strings.HasSuffix(value, "]") {
-		return nil, fmt.Errorf("invalid array %q", value)
-	}
-
-	body := strings.TrimSpace(value[1 : len(value)-1])
-	if body == "" {
-		return []string{}, nil
-	}
-
-	parts := strings.Split(body, ",")
-	values := make([]string, 0, len(parts))
-	for _, part := range parts {
-		values = append(values, parseString(part))
-	}
-
-	return values, nil
 }

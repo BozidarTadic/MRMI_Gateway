@@ -2,19 +2,31 @@ package grpctransport
 
 import (
 	"context"
+	"crypto/tls"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Client struct {
 	conn *grpc.ClientConn
 }
 
-func Dial(ctx context.Context, target string) (*Client, error) {
-	conn, err := grpc.DialContext(
+// Dial connects to a gateway gRPC server at target.
+// Pass a non-nil tlsCfg to use mTLS; pass nil for insecure (development only).
+func Dial(ctx context.Context, target string, tlsCfg *tls.Config) (*Client, error) {
+	var creds credentials.TransportCredentials
+	if tlsCfg != nil {
+		creds = credentials.NewTLS(tlsCfg)
+	} else {
+		creds = insecure.NewCredentials()
+	}
+
+	conn, err := grpc.DialContext( //nolint:staticcheck // migrate to grpc.NewClient in Sprint 2
 		ctx,
 		target,
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.ForceCodec(jsonCodec{})),
 	)
