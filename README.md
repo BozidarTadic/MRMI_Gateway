@@ -127,7 +127,7 @@ docs/               — ADR, sprint plans, operator guides
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Items open for external contributors: CLI reference client (Milestone 8), Extension API (Milestone 9), Java SDK (Milestone 10).
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md). Items open for external contributors: CLI reference client (Milestone 8), Extension API (Milestone 9), Java SDK (Milestone 10).
 
 ## License
 
