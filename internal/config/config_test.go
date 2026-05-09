@@ -40,6 +40,41 @@ func TestLoadBalancedConfigFromFile(t *testing.T) {
 	}
 }
 
+func TestLoadRSLocalConfigHasPeerRoutes(t *testing.T) {
+	path := filepath.Join("..", "..", "configs", "node.rs.local.toml")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if addr := cfg.Network.PeerRoutes["RU"]; addr != "localhost:7778" {
+		t.Fatalf("expected peer RU=localhost:7778, got %q", addr)
+	}
+}
+
+func TestLoadRULocalConfigHasPeerRoutes(t *testing.T) {
+	path := filepath.Join("..", "..", "configs", "node.ru.local.toml")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected config to load, got %v", err)
+	}
+
+	if addr := cfg.Network.PeerRoutes["RS"]; addr != "localhost:7777" {
+		t.Fatalf("expected peer RS=localhost:7777, got %q", addr)
+	}
+}
+
+func TestValidateRejectsEmptyPeerAddress(t *testing.T) {
+	cfg := DefaultBalancedConfig()
+	cfg.Network.PeerRoutes = map[string]string{"RU": ""}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for empty peer address, got nil")
+	}
+}
+
 func TestLoadConfigAppliesProfileOverrides(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "strict.toml")
 	content := []byte(`

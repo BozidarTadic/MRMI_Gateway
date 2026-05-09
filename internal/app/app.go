@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/dedup"
+	"MRMI_Gateway/internal/dnstxt"
 	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/server"
 	grpctransport "MRMI_Gateway/internal/transport/grpc"
@@ -25,6 +28,16 @@ func Run(ctx context.Context, cfg config.Config) error {
 
 	dedupIndex := dedup.New(cfg.Profile.DedupTTL)
 	go runPurge(ctx, dedupIndex)
+
+	if cfg.Policy.Audit.DNSTXTPublish {
+		if cfg.Policy.Audit.DNSTXTInterval == 0 {
+			log.Printf("[dnstxt] dns_txt_publish=true but dns_txt_interval_s is 0, skipping publisher")
+		} else {
+			log.Printf("[dnstxt] no DNS provider configured; audit root hash will be emitted to stdout")
+			p := dnstxt.New(cfg.Node.NodeID, cfg.Policy.Audit.DNSTXTInterval, os.Stdout)
+			go p.Run(ctx, auditLog.RootHash)
+		}
+	}
 
 	gw := core.NewGateway(cfg, engine, auditLog, dedupIndex)
 

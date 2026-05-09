@@ -65,6 +65,7 @@ type NetworkConfig struct {
 	HTTPListenAddr  string
 	MetricsAddr     string
 	ShutdownTimeout time.Duration
+	PeerRoutes      map[string]string // region code → gRPC address
 }
 
 func Load(path string) (Config, error) {
@@ -130,6 +131,12 @@ func (c Config) Validate() error {
 		return errors.New("network.grpc_listen_addr is required")
 	}
 
+	for region, addr := range c.Network.PeerRoutes {
+		if strings.TrimSpace(addr) == "" {
+			return fmt.Errorf("peers: address for region %q is empty", region)
+		}
+	}
+
 	return nil
 }
 
@@ -185,6 +192,8 @@ type rawTOML struct {
 		MetricsPort      int    `toml:"metrics_port"`
 		ShutdownTimeoutS int    `toml:"shutdown_timeout_s"`
 	} `toml:"network"`
+
+	Peers map[string]string `toml:"peers"`
 }
 
 func (r rawTOML) profileName() string {
@@ -277,5 +286,9 @@ func (r rawTOML) apply(cfg *Config) {
 	}
 	if r.Network.ShutdownTimeoutS > 0 {
 		cfg.Network.ShutdownTimeout = time.Duration(r.Network.ShutdownTimeoutS) * time.Second
+	}
+
+	if r.Peers != nil {
+		cfg.Network.PeerRoutes = r.Peers
 	}
 }

@@ -30,3 +30,6 @@ listen_addr         = "0.0.0.0:7778"
 grpc_port           = 7778
 http_port           = 8081
 metrics_port        = 9091
+
+[peers]
+RS = "localhost:7777"
