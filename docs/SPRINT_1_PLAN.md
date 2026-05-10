@@ -1,5 +1,7 @@
 # MRMI Gateway Project Plan
 
+> **Status: Complete** — All Sprint 1 tasks delivered. See Sprint 2 plan for next steps.
+
 This document breaks the project into implementation areas and defines the first sprint plan for moving the v0.1 gateway toward a usable local two-node corridor.
 
 ## Project Areas

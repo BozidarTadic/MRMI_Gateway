@@ -1,5 +1,7 @@
 # Sprint 2 Plan
 
+> **Status: Complete** — All 7 tasks delivered (commits `a4901d1`–`db73307`). GitHub issues #1–#7 closed.
+
 ## Context
 
 Sprint 1 delivered a working single-node gateway: policy evaluation, dedup, Merkle audit, gRPC and HTTP transport, and a passing two-node integration test. What it did not deliver is an actual corridor — the RS node evaluates policy but never forwards the envelope to RU. There is also no mTLS, no retry/DLQ, and the privacy profile fields (jitter, padding) are parsed but silently ignored.

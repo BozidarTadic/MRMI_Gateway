@@ -113,10 +113,10 @@ Each entry shows the envelope, target peer address, number of attempts, and the 
 When `dns_txt_publish = true` in the audit config, the node periodically emits its audit root hash to stdout (no external DNS provider required in dev mode):
 
 ```
-v=1 ts=1746700000 root=sha256:abc123... node=rs-node-01
+v=1 ts=1746700000 root=sha256:abc123... node=rs-node-01 law=RS-GDPR
 ```
 
-This value is intended to be published as a DNS TXT record at `_mrmi-audit.<node_id>` for independent third-party verification.
+This value is intended to be published as a DNS TXT record at `_mrmi-audit.<node_id>` for independent third-party verification. The `law=` field carries the node's declared `applicable_law` so auditors can identify the legal framework without a separate lookup.
 
 ## Automated integration test
 
@@ -186,3 +186,54 @@ All packages must pass before any changes are merged.
 | `configs/node.balanced.toml` | RS | `:7777` | `:8080` | RU, BY, KZ, AM |
 
 `node.balanced.toml` and `node.rs.local.toml` are equivalent. The `.local.toml` variants are the canonical configs for the two-node corridor scenario.
+
+---
+
+## Coming in Sprint 3
+
+The following features are in active development and will be documented here once delivered.
+
+### Ed25519 envelope signing
+
+Each node will sign every outgoing envelope with its Ed25519 private key. The receiving node verifies the signature before policy evaluation. Key setup:
+
+```toml
+# [tls] section — add signing key path
+[tls]
+signing_key = "certs/node.ed25519.key"
+```
+
+When `signing_key` is not set, a dev-mode ephemeral key is generated at startup (logged as a warning). Use `mrmi keygen` (Sprint 4) to generate a persistent key pair.
+
+### Trust tier configuration
+
+Set a minimum trust tier for inbound envelopes in `[policy.inbound]`:
+
+```toml
+[policy.inbound]
+min_trust_tier = 1   # reject T0 (anonymous) senders
+```
+
+Violations produce a `DENY` audit entry with `reason = "TRUST_TIER_BELOW_MINIMUM"` and the sender's tier value.
+
+### CRL and revocation
+
+Revoke a node by posting a CRL entry via the `ShareCRL` gRPC method. An entry becomes effective after ≥2 T2+ node signatures are collected via gossip. Revoked nodes are denied at the policy layer:
+
+```
+decision: DENY
+reason: NODE_REVOKED
+```
+
+### Dummy traffic
+
+Enable dummy traffic for traffic-analysis resistance:
+
+```toml
+[profile]
+name = "balanced"   # dummy rate: 1 msg / 60s / peer
+# name = "strict"   # dummy rate: 1 msg / 5s / peer
+# name = "performance"  # disabled
+```
+
+Dummy envelopes appear in the audit log as `ALLOW/DUMMY` and are not delivered to the application.
