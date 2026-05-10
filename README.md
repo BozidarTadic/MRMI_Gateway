@@ -36,7 +36,7 @@ MRMI Node (RU) ──── gRPC/mTLS ────── MRMI Node (RS)
 
 Each node runs a Go binary. Nodes communicate over gRPC with mutual TLS. Every envelope is policy-checked, deduplicated via idempotency key, and appended to a Merkle audit log whose root hash is published to DNS TXT for independent verification.
 
-Full architecture: [docs/ADR_v0.5.md](docs/ADR_v0.5.md)
+Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md)
 
 ## Key Properties
 
@@ -49,10 +49,12 @@ Full architecture: [docs/ADR_v0.5.md](docs/ADR_v0.5.md)
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.1 (Sprint 2 complete)
+## Current Status — v0.1 (Sprint 3 in progress)
+
+**Sprint 1 + 2 — complete**
 
 - [x] Protobuf contracts (`proto/mrmi/v1/contracts.proto`)
-- [x] Config model — TOML parser, 3 profiles, `Config.Validate()`
+- [x] Config model — TOML parser, 3 profiles, node tier (Regional/Alliance/Global), `Config.Validate()`
 - [x] Policy engine — allow/deny by region + trust tier, all decisions audited
 - [x] Merkle audit log — SHA-256 chained, `Verify()`, `RootHash()`
 - [x] HTTP server — `/healthz`, `/readyz`, `/.well-known/mrmi-audit`
@@ -65,7 +67,25 @@ Full architecture: [docs/ADR_v0.5.md](docs/ADR_v0.5.md)
 - [x] DNS TXT root hash publisher (stdout/file on configured interval)
 - [x] Envelope forwarding between nodes (tier-preference routing: Regional → Alliance → Global → DLQ)
 - [x] Retry with exponential backoff and dead-letter queue (`delivery` package)
-- [ ] .NET SDK (Milestone 4)
+- [x] Node tier model — `node_scope`, `alliance_id`, `node_region` in config and audit entries
+
+**Sprint 3 — in progress**
+
+- [ ] `applicable_law` in DNS TXT output + startup warning on unset production profile
+- [ ] Trust tier violation reason and tier value in audit entries
+- [ ] Per-sender sequence number tracker (`session` package)
+- [ ] Ed25519 envelope signing — sign on send, verify before policy evaluation (`identity` package)
+- [ ] CRL store and revocation gossip — ≥2 T2+ signatures required (`crl` package)
+- [ ] Trust decay timer — auto-reduce effective tier after 30 days without cross-validation
+- [ ] Dummy traffic generator — synthetic envelopes at profile-defined intervals (`dummy` package)
+
+**Future**
+
+- [ ] `mrmi keygen` CLI + audit verify command (Sprint 4)
+- [ ] HTTPS `/.well-known/mrmi-audit` Ed25519 signature (Sprint 4)
+- [ ] Cross-node root hash gossip (Sprint 4)
+- [ ] Policy hot-reload within 5 seconds (Sprint 4)
+- [ ] .NET SDK (Sprint 5 / Milestone 4)
 - [ ] CLI reference client (open for contributors)
 - [ ] Java SDK (open for contributors)
 
@@ -106,7 +126,7 @@ Nodes are configured via signed TOML files. Three compliance profiles are availa
 | `configs/node.rs.local.toml` | RS node for local two-node corridor testing |
 | `configs/node.ru.local.toml` | RU node for local two-node corridor testing |
 
-Profile definitions (dedup TTL, jitter, padding, dummy traffic rates) live in `internal/config/presets.go`. Full TOML reference in [docs/ADR_v0.5.md — Appendix A](docs/ADR_v0.5.md#appendix-a--full-toml-configuration-examples).
+Profile definitions (dedup TTL, jitter, padding, dummy traffic rates) live in `internal/config/presets.go`. Full TOML reference in [docs/MRMI_Gateway_ADR_v0_8.md — Appendix A](docs/MRMI_Gateway_ADR_v0_8.md#appendix-a--full-toml-configuration-examples).
 
 ## Repository Layout
 
@@ -116,10 +136,15 @@ internal/
   app/              — wiring: audit, policy, HTTP, gRPC, shutdown
   audit/            — Merkle chain log (SHA-256, Verify, RootHash)
   config/           — TOML parser, validation, profile presets
+  core/             — domain types: Gateway, Envelope, SendRequest/Response
   dedup/            — idempotency key store with TTL + Purge
+  delivery/         — Forwarder, retry backoff, DLQ
+  dnstxt/           — DNS TXT root hash publisher
   integration/      — multi-node end-to-end tests
   policy/           — policy engine (region allow/deny, trust tier)
   server/           — HTTP endpoints (healthz, readyz, mrmi-audit)
+  testcerts/        — in-process self-signed cert generation (tests only)
+  tlsutil/          — LoadServerTLS / LoadClientTLS
   transport/grpc/   — gRPC server + client, JSON codec
 proto/mrmi/v1/      — protobuf contracts
 configs/            — operator TOML configs
