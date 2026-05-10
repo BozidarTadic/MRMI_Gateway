@@ -16,6 +16,16 @@ type Config struct {
 	Profile ProfileConfig
 	Policy  PolicyConfig
 	Network NetworkConfig
+	TLS     TLSConfig
+}
+
+// TLSConfig holds paths to certificate material for inter-node mTLS.
+// Both server and client use the same cert/key/CA (node identity model).
+type TLSConfig struct {
+	Cert     string // path to PEM-encoded node certificate
+	Key      string // path to PEM-encoded node private key
+	CA       string // path to PEM-encoded CA that signed peer certificates
+	Insecure bool   // skip TLS entirely — development only, never true in production
 }
 
 type NodeConfig struct {
@@ -253,6 +263,13 @@ type rawTOML struct {
 		NodeScope string   `toml:"node_scope"`
 		Regions   []string `toml:"regions"`
 	} `toml:"peers"`
+
+	TLS struct {
+		Cert     string `toml:"cert"`
+		Key      string `toml:"key"`
+		CA       string `toml:"ca"`
+		Insecure bool   `toml:"insecure"`
+	} `toml:"tls"`
 }
 
 func (r rawTOML) profileName() string {
@@ -361,6 +378,17 @@ func (r rawTOML) apply(cfg *Config) {
 	if r.Network.ShutdownTimeoutS > 0 {
 		cfg.Network.ShutdownTimeout = time.Duration(r.Network.ShutdownTimeoutS) * time.Second
 	}
+
+	if v := strings.TrimSpace(r.TLS.Cert); v != "" {
+		cfg.TLS.Cert = v
+	}
+	if v := strings.TrimSpace(r.TLS.Key); v != "" {
+		cfg.TLS.Key = v
+	}
+	if v := strings.TrimSpace(r.TLS.CA); v != "" {
+		cfg.TLS.CA = v
+	}
+	cfg.TLS.Insecure = r.TLS.Insecure
 
 	if r.Peers != nil {
 		cfg.Network.Peers = make(map[string]PeerConfig, len(r.Peers))

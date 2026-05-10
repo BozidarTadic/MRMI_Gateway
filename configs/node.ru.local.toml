@@ -32,6 +32,9 @@ grpc_port           = 7778
 http_port           = 8081
 metrics_port        = 9091
 
+[tls]
+insecure = true
+
 [peers.RS]
 addr       = "localhost:7777"
 node_scope = "regional"

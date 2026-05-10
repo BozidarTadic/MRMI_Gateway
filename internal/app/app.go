@@ -17,10 +17,26 @@ import (
 	"MRMI_Gateway/internal/dnstxt"
 	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/server"
+	"MRMI_Gateway/internal/tlsutil"
 	grpctransport "MRMI_Gateway/internal/transport/grpc"
 )
 
 func Run(ctx context.Context, cfg config.Config) error {
+	tlsCert := tlsutil.TLSConfig{
+		Cert:     cfg.TLS.Cert,
+		Key:      cfg.TLS.Key,
+		CA:       cfg.TLS.CA,
+		Insecure: cfg.TLS.Insecure,
+	}
+	serverTLS, err := tlsutil.LoadServerTLS(tlsCert)
+	if err != nil {
+		return fmt.Errorf("load server TLS: %w", err)
+	}
+	clientTLS, err := tlsutil.LoadClientTLS(tlsCert)
+	if err != nil {
+		return fmt.Errorf("load client TLS: %w", err)
+	}
+
 	auditLog := audit.New()
 	engine, err := policy.NewEngine(cfg, auditLog)
 	if err != nil {
@@ -46,7 +62,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 		fwd = delivery.NewForwarder(cfg, dlq, func(ctx context.Context, addr string, env core.Envelope) error {
 			dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
-			client, err := grpctransport.Dial(dialCtx, addr, nil)
+			client, err := grpctransport.Dial(dialCtx, addr, clientTLS)
 			if err != nil {
 				return fmt.Errorf("dial %s: %w", addr, err)
 			}
@@ -79,7 +95,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 	gw := core.NewGateway(cfg, engine, auditLog, dedupIndex, fwd)
 
 	httpServer := server.NewHTTPServer(cfg, engine, auditLog)
-	grpcServer, err := grpctransport.NewServer(cfg.Network.GRPCListenAddr, grpctransport.NewAdapter(gw), nil)
+	grpcServer, err := grpctransport.NewServer(cfg.Network.GRPCListenAddr, grpctransport.NewAdapter(gw), serverTLS)
 	if err != nil {
 		return fmt.Errorf("create grpc server: %w", err)
 	}
