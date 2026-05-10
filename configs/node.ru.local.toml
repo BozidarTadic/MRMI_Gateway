@@ -1,5 +1,6 @@
 [node]
 node_id         = "ru-node-01"
+node_scope      = "regional"
 region          = "RU"
 operator_id     = "example-operator"
 policy_version  = "0.1.0"
@@ -31,5 +32,6 @@ grpc_port           = 7778
 http_port           = 8081
 metrics_port        = 9091
 
-[peers]
-RS = "localhost:7777"
+[peers.RS]
+addr       = "localhost:7777"
+node_scope = "regional"

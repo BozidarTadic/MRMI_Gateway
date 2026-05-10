@@ -29,6 +29,9 @@ type Entry struct {
 	Profile         string   `json:"profile"`
 	ApplicableLaw   string   `json:"applicable_law"`
 	DedupTTLHours   uint64   `json:"dedup_ttl_hours"`
+	NodeScope       string   `json:"node_scope"`        // "regional" | "alliance" | "global"
+	AllianceID      string   `json:"alliance_id"`       // non-empty only for alliance nodes
+	NodeRegion      string   `json:"node_region"`       // physical region of the node
 	PreviousHash    string   `json:"previous_hash"`
 	EntryHash       string   `json:"entry_hash"`
 }
@@ -60,6 +63,9 @@ func (l *Log) Append(cfg config.Config, decision Decision, senderRegion, recipie
 		Profile:         cfg.Profile.Name,
 		ApplicableLaw:   cfg.Node.ApplicableLaw,
 		DedupTTLHours:   uint64(cfg.Profile.DedupTTL / time.Hour),
+		NodeScope:       cfg.Node.NodeScope,
+		AllianceID:      cfg.Node.AllianceID,
+		NodeRegion:      cfg.Node.Region,
 		PreviousHash:    prevHash,
 	}
 	entry.EntryHash = hashEntry(entry)
@@ -122,6 +128,9 @@ func hashEntry(entry Entry) string {
 		Profile         string   `json:"profile"`
 		ApplicableLaw   string   `json:"applicable_law"`
 		DedupTTLHours   uint64   `json:"dedup_ttl_hours"`
+		NodeScope       string   `json:"node_scope"`
+		AllianceID      string   `json:"alliance_id"`
+		NodeRegion      string   `json:"node_region"`
 		PreviousHash    string   `json:"previous_hash"`
 	}{
 		Seq:             entry.Seq,
@@ -133,6 +142,9 @@ func hashEntry(entry Entry) string {
 		Profile:         entry.Profile,
 		ApplicableLaw:   entry.ApplicableLaw,
 		DedupTTLHours:   entry.DedupTTLHours,
+		NodeScope:       entry.NodeScope,
+		AllianceID:      entry.AllianceID,
+		NodeRegion:      entry.NodeRegion,
 		PreviousHash:    entry.PreviousHash,
 	}
 

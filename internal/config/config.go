@@ -20,7 +20,11 @@ type Config struct {
 
 type NodeConfig struct {
 	NodeID        string
-	Region        string
+	NodeScope     string // "regional" | "alliance" | "global"
+	Region        string // physical region; required for regional and global nodes
+	Regions       []string // served regions; required for alliance nodes
+	AllianceID    string   // legal agreement reference; required for alliance nodes
+	Disclaimer    string   // e.g. "no-data-residency-claims"; used for global nodes
 	OperatorID    string
 	PolicyVersion string
 	ApplicableLaw string
@@ -39,6 +43,13 @@ type PolicyConfig struct {
 	Outbound OutboundPolicy
 	Inbound  InboundPolicy
 	Audit    AuditPolicy
+	Routing  RoutingPolicy
+}
+
+type RoutingPolicy struct {
+	// AllowVia restricts which node tiers this node will route through.
+	// Empty means all tiers are allowed. Example: ["regional", "alliance"]
+	AllowVia []string
 }
 
 type OutboundPolicy struct {
@@ -60,12 +71,21 @@ type AuditPolicy struct {
 	HTTPSWellKnown   bool
 }
 
+// PeerConfig describes a single peer node. For regional peers the map key is the
+// region code (e.g. "RU"). For alliance peers the key is the alliance_id; Regions
+// lists every region the peer serves. For global peers the key is any unique name.
+type PeerConfig struct {
+	Addr      string   // gRPC dial address
+	NodeScope string   // "regional" | "alliance" | "global"
+	Regions   []string // non-empty only for alliance peers
+}
+
 type NetworkConfig struct {
 	GRPCListenAddr  string
 	HTTPListenAddr  string
 	MetricsAddr     string
 	ShutdownTimeout time.Duration
-	PeerRoutes      map[string]string // region code → gRPC address
+	Peers           map[string]PeerConfig
 }
 
 func Load(path string) (Config, error) {
@@ -111,8 +131,10 @@ func (c Config) Validate() error {
 	switch {
 	case strings.TrimSpace(c.Node.NodeID) == "":
 		return errors.New("node.node_id is required")
-	case strings.TrimSpace(c.Node.Region) == "":
-		return errors.New("node.region is required")
+	case strings.TrimSpace(c.Node.NodeScope) == "":
+		return errors.New("node.node_scope is required")
+	case c.Node.NodeScope != "regional" && c.Node.NodeScope != "alliance" && c.Node.NodeScope != "global":
+		return fmt.Errorf("node.node_scope %q is invalid: must be regional, alliance, or global", c.Node.NodeScope)
 	case strings.TrimSpace(c.Node.OperatorID) == "":
 		return errors.New("node.operator_id is required")
 	case strings.TrimSpace(c.Node.PolicyVersion) == "":
@@ -131,9 +153,35 @@ func (c Config) Validate() error {
 		return errors.New("network.grpc_listen_addr is required")
 	}
 
-	for region, addr := range c.Network.PeerRoutes {
-		if strings.TrimSpace(addr) == "" {
-			return fmt.Errorf("peers: address for region %q is empty", region)
+	switch c.Node.NodeScope {
+	case "regional", "global":
+		if strings.TrimSpace(c.Node.Region) == "" {
+			return fmt.Errorf("node.region is required for %s nodes", c.Node.NodeScope)
+		}
+	case "alliance":
+		if len(c.Node.Regions) == 0 {
+			return errors.New("node.regions is required for alliance nodes")
+		}
+		if strings.TrimSpace(c.Node.AllianceID) == "" {
+			return errors.New("node.alliance_id is required for alliance nodes")
+		}
+	}
+
+	for _, tier := range c.Policy.Routing.AllowVia {
+		if tier != "regional" && tier != "alliance" && tier != "global" {
+			return fmt.Errorf("policy.routing.allow_via: %q is not a valid tier", tier)
+		}
+	}
+
+	for key, peer := range c.Network.Peers {
+		if strings.TrimSpace(peer.Addr) == "" {
+			return fmt.Errorf("peers[%q].addr is empty", key)
+		}
+		if peer.NodeScope != "" && peer.NodeScope != "regional" && peer.NodeScope != "alliance" && peer.NodeScope != "global" {
+			return fmt.Errorf("peers[%q].node_scope %q is invalid: must be regional, alliance, or global", key, peer.NodeScope)
+		}
+		if peer.NodeScope == "alliance" && len(peer.Regions) == 0 {
+			return fmt.Errorf("peers[%q].regions is required for alliance peers", key)
 		}
 	}
 
@@ -145,12 +193,16 @@ func (c Config) Validate() error {
 // TOML key names; apply() converts them to time.Duration.
 type rawTOML struct {
 	Node struct {
-		NodeID        string `toml:"node_id"`
-		Region        string `toml:"region"`
-		OperatorID    string `toml:"operator_id"`
-		PolicyVersion string `toml:"policy_version"`
-		ApplicableLaw string `toml:"applicable_law"`
-		SignedBy      string `toml:"signed_by"`
+		NodeID        string   `toml:"node_id"`
+		NodeScope     string   `toml:"node_scope"`
+		Region        string   `toml:"region"`
+		Regions       []string `toml:"regions"`
+		AllianceID    string   `toml:"alliance_id"`
+		Disclaimer    string   `toml:"disclaimer"`
+		OperatorID    string   `toml:"operator_id"`
+		PolicyVersion string   `toml:"policy_version"`
+		ApplicableLaw string   `toml:"applicable_law"`
+		SignedBy      string   `toml:"signed_by"`
 	} `toml:"node"`
 
 	Profile struct {
@@ -181,6 +233,9 @@ type rawTOML struct {
 			DNSIntervalS    int    `toml:"dns_txt_interval_s"`
 			HTTPSWellKnown  *bool  `toml:"https_well_known"`
 		} `toml:"audit"`
+		Routing struct {
+			AllowVia []string `toml:"allow_via"`
+		} `toml:"routing"`
 	} `toml:"policy"`
 
 	Network struct {
@@ -193,7 +248,11 @@ type rawTOML struct {
 		ShutdownTimeoutS int    `toml:"shutdown_timeout_s"`
 	} `toml:"network"`
 
-	Peers map[string]string `toml:"peers"`
+	Peers map[string]struct {
+		Addr      string   `toml:"addr"`
+		NodeScope string   `toml:"node_scope"`
+		Regions   []string `toml:"regions"`
+	} `toml:"peers"`
 }
 
 func (r rawTOML) profileName() string {
@@ -207,8 +266,20 @@ func (r rawTOML) apply(cfg *Config) {
 	if v := strings.TrimSpace(r.Node.NodeID); v != "" {
 		cfg.Node.NodeID = v
 	}
+	if v := strings.TrimSpace(r.Node.NodeScope); v != "" {
+		cfg.Node.NodeScope = v
+	}
 	if v := strings.TrimSpace(r.Node.Region); v != "" {
 		cfg.Node.Region = v
+	}
+	if r.Node.Regions != nil {
+		cfg.Node.Regions = r.Node.Regions
+	}
+	if v := strings.TrimSpace(r.Node.AllianceID); v != "" {
+		cfg.Node.AllianceID = v
+	}
+	if v := strings.TrimSpace(r.Node.Disclaimer); v != "" {
+		cfg.Node.Disclaimer = v
 	}
 	if v := strings.TrimSpace(r.Node.OperatorID); v != "" {
 		cfg.Node.OperatorID = v
@@ -268,6 +339,9 @@ func (r rawTOML) apply(cfg *Config) {
 	if r.Policy.Audit.HTTPSWellKnown != nil {
 		cfg.Policy.Audit.HTTPSWellKnown = *r.Policy.Audit.HTTPSWellKnown
 	}
+	if r.Policy.Routing.AllowVia != nil {
+		cfg.Policy.Routing.AllowVia = r.Policy.Routing.AllowVia
+	}
 
 	if v := strings.TrimSpace(r.Network.ListenAddr); v != "" {
 		cfg.Network.GRPCListenAddr = v
@@ -289,6 +363,13 @@ func (r rawTOML) apply(cfg *Config) {
 	}
 
 	if r.Peers != nil {
-		cfg.Network.PeerRoutes = r.Peers
+		cfg.Network.Peers = make(map[string]PeerConfig, len(r.Peers))
+		for k, v := range r.Peers {
+			cfg.Network.Peers[k] = PeerConfig{
+				Addr:      v.Addr,
+				NodeScope: v.NodeScope,
+				Regions:   v.Regions,
+			}
+		}
 	}
 }

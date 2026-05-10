@@ -10,6 +10,7 @@ func DefaultConfigForProfile(name string) Config {
 	cfg := Config{
 		Node: NodeConfig{
 			NodeID:        "rs-node-01",
+			NodeScope:     "regional",
 			Region:        "RS",
 			OperatorID:    "example-operator",
 			PolicyVersion: "0.1.0",

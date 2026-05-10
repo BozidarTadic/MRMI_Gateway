@@ -59,6 +59,7 @@ func (a *gatewayAdapter) GetNodeInfo(ctx context.Context, req *GetNodeInfoReques
 	}
 	return &GetNodeInfoResponse{
 		NodeID:        info.NodeID,
+		NodeScope:     info.NodeScope,
 		Region:        info.Region,
 		ApplicableLaw: info.ApplicableLaw,
 		Profile:       info.Profile,

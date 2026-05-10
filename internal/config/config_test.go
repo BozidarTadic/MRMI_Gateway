@@ -48,7 +48,7 @@ func TestLoadRSLocalConfigHasPeerRoutes(t *testing.T) {
 		t.Fatalf("expected config to load, got %v", err)
 	}
 
-	if addr := cfg.Network.PeerRoutes["RU"]; addr != "localhost:7778" {
+	if addr := cfg.Network.Peers["RU"].Addr; addr != "localhost:7778" {
 		t.Fatalf("expected peer RU=localhost:7778, got %q", addr)
 	}
 }
@@ -61,14 +61,14 @@ func TestLoadRULocalConfigHasPeerRoutes(t *testing.T) {
 		t.Fatalf("expected config to load, got %v", err)
 	}
 
-	if addr := cfg.Network.PeerRoutes["RS"]; addr != "localhost:7777" {
+	if addr := cfg.Network.Peers["RS"].Addr; addr != "localhost:7777" {
 		t.Fatalf("expected peer RS=localhost:7777, got %q", addr)
 	}
 }
 
 func TestValidateRejectsEmptyPeerAddress(t *testing.T) {
 	cfg := DefaultBalancedConfig()
-	cfg.Network.PeerRoutes = map[string]string{"RU": ""}
+	cfg.Network.Peers = map[string]PeerConfig{"RU": {Addr: "", NodeScope: "regional"}}
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected validation error for empty peer address, got nil")
@@ -80,6 +80,7 @@ func TestLoadConfigAppliesProfileOverrides(t *testing.T) {
 	content := []byte(`
 [node]
 node_id = "ru-node-01"
+node_scope = "regional"
 region = "RU"
 operator_id = "ru-operator"
 policy_version = "1.0.0"

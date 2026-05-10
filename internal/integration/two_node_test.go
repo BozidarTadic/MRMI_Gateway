@@ -35,7 +35,7 @@ func startNode(t *testing.T, cfg config.Config) node {
 		t.Fatalf("startNode %s: policy engine: %v", cfg.Node.NodeID, err)
 	}
 
-	gw := core.NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL))
+	gw := core.NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL), nil)
 	srv, err := grpctransport.NewServer(":0", grpctransport.NewAdapter(gw), nil)
 	if err != nil {
 		t.Fatalf("startNode %s: grpc server: %v", cfg.Node.NodeID, err)

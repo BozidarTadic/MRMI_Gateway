@@ -27,7 +27,7 @@ func startTestServer(t *testing.T) (addr string, client *Client) {
 		t.Fatalf("create policy engine: %v", err)
 	}
 
-	gw := core.NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL))
+	gw := core.NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL), nil)
 	srv, err := NewServer(":0", NewAdapter(gw), nil)
 	if err != nil {
 		t.Fatalf("create grpc server: %v", err)

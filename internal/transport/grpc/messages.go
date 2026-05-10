@@ -30,6 +30,7 @@ type GetNodeInfoRequest struct{}
 
 type GetNodeInfoResponse struct {
 	NodeID        string `json:"node_id"`
+	NodeScope     string `json:"node_scope"`
 	Region        string `json:"region"`
 	ApplicableLaw string `json:"applicable_law"`
 	Profile       string `json:"profile"`

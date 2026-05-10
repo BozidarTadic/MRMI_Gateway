@@ -13,6 +13,12 @@ import (
 // ErrEmptyIdempotencyKey is returned when SendEnvelope receives a request with no idempotency key.
 var ErrEmptyIdempotencyKey = errors.New("idempotency_key is required")
 
+// Forwarder delivers an envelope to a peer node chosen by tier-preference routing.
+// Implementations must handle DLQ writes internally on exhausted retries.
+type Forwarder interface {
+	Forward(ctx context.Context, env Envelope) (addr string, err error)
+}
+
 type Decision string
 
 const (
@@ -49,28 +55,33 @@ type SendResponse struct {
 
 type NodeInfo struct {
 	NodeID        string
+	NodeScope     string
 	Region        string
 	ApplicableLaw string
 	Profile       string
 }
 
 type Gateway struct {
-	cfg    config.Config
-	policy *policy.Engine
-	audit  *audit.Log
-	dedup  *dedup.Index
+	cfg       config.Config
+	policy    *policy.Engine
+	audit     *audit.Log
+	dedup     *dedup.Index
+	forwarder Forwarder // nil = forwarding disabled
 }
 
-func NewGateway(cfg config.Config, policyEngine *policy.Engine, auditLog *audit.Log, dedupIndex *dedup.Index) *Gateway {
+// NewGateway creates a Gateway. Pass nil for forwarder to disable outbound forwarding
+// (policy evaluation and audit still run normally).
+func NewGateway(cfg config.Config, policyEngine *policy.Engine, auditLog *audit.Log, dedupIndex *dedup.Index, forwarder Forwarder) *Gateway {
 	return &Gateway{
-		cfg:    cfg,
-		policy: policyEngine,
-		audit:  auditLog,
-		dedup:  dedupIndex,
+		cfg:       cfg,
+		policy:    policyEngine,
+		audit:     auditLog,
+		dedup:     dedupIndex,
+		forwarder: forwarder,
 	}
 }
 
-func (g *Gateway) SendEnvelope(_ context.Context, req SendRequest) (SendResponse, error) {
+func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendResponse, error) {
 	if req.Envelope.IdempotencyKey == "" {
 		return SendResponse{}, ErrEmptyIdempotencyKey
 	}
@@ -93,6 +104,12 @@ func (g *Gateway) SendEnvelope(_ context.Context, req SendRequest) (SendResponse
 		TrustTier:       req.Envelope.TrustTier,
 	})
 
+	if result.Decision == policy.DecisionAllow && g.forwarder != nil {
+		// Fire-and-forget: delivery is at-least-once; forwarding failures are handled
+		// by the forwarder (retry + DLQ). The policy decision is still returned to the caller.
+		_, _ = g.forwarder.Forward(ctx, req.Envelope)
+	}
+
 	return SendResponse{
 		Decision:      Decision(result.Decision),
 		Reason:        result.Reason,
@@ -105,6 +122,7 @@ func (g *Gateway) SendEnvelope(_ context.Context, req SendRequest) (SendResponse
 func (g *Gateway) GetNodeInfo(_ context.Context) (NodeInfo, error) {
 	return NodeInfo{
 		NodeID:        g.cfg.Node.NodeID,
+		NodeScope:     g.cfg.Node.NodeScope,
 		Region:        g.cfg.Node.Region,
 		ApplicableLaw: g.cfg.Node.ApplicableLaw,
 		Profile:       g.cfg.Profile.Name,

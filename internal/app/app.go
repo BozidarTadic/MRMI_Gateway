@@ -13,6 +13,7 @@ import (
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/dedup"
+	"MRMI_Gateway/internal/delivery"
 	"MRMI_Gateway/internal/dnstxt"
 	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/server"
@@ -39,7 +40,43 @@ func Run(ctx context.Context, cfg config.Config) error {
 		}
 	}
 
-	gw := core.NewGateway(cfg, engine, auditLog, dedupIndex)
+	dlq := delivery.NewDLQ()
+	var fwd core.Forwarder
+	if len(cfg.Network.Peers) > 0 {
+		fwd = delivery.NewForwarder(cfg, dlq, func(ctx context.Context, addr string, env core.Envelope) error {
+			dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			client, err := grpctransport.Dial(dialCtx, addr, nil)
+			if err != nil {
+				return fmt.Errorf("dial %s: %w", addr, err)
+			}
+			defer client.Close()
+			resp, err := client.SendEnvelope(ctx, &grpctransport.SendEnvelopeRequest{
+				Envelope: grpctransport.Envelope{
+					IdempotencyKey:    env.IdempotencyKey,
+					SenderIdentity:    env.SenderIdentity,
+					RecipientIdentity: env.RecipientIdentity,
+					SenderRegion:      env.SenderRegion,
+					RecipientRegion:   env.RecipientRegion,
+					TrustTier:         env.TrustTier,
+					SequenceNumber:    env.SequenceNumber,
+					Payload:           env.Payload,
+					PaddedTo:          env.PaddedTo,
+					Timestamp:         env.Timestamp,
+					Signature:         env.Signature,
+				},
+			})
+			if err != nil {
+				return err
+			}
+			if resp.Decision == "DENY" {
+				return fmt.Errorf("peer denied envelope: %s", resp.Reason)
+			}
+			return nil
+		})
+	}
+
+	gw := core.NewGateway(cfg, engine, auditLog, dedupIndex, fwd)
 
 	httpServer := server.NewHTTPServer(cfg, engine, auditLog)
 	grpcServer, err := grpctransport.NewServer(cfg.Network.GRPCListenAddr, grpctransport.NewAdapter(gw), nil)

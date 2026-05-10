@@ -53,6 +53,9 @@ message AuditEntry {
   uint32 dedup_ttl_hours = 9;
   bytes prev_hash = 10;
   bytes entry_hash = 11;
+  string node_scope = 12;   // "regional" | "alliance" | "global"
+  string alliance_id = 13;  // non-empty only for alliance nodes
+  string node_region = 14;  // physical region of the node
 }
 
 message ProfileConfig {
@@ -97,6 +100,7 @@ message GetNodeInfoResponse {
   string region = 2;
   string applicable_law = 3;
   string profile = 4;
+  string node_scope = 5;
 }
 
 service GatewayService {
