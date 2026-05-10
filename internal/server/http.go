@@ -8,6 +8,7 @@ import (
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/policy"
+	"MRMI_Gateway/internal/version"
 )
 
 type HTTPServer struct {
@@ -16,6 +17,8 @@ type HTTPServer struct {
 
 type auditResponse struct {
 	Version       int    `json:"version"`
+	AppVersion    string `json:"app_version"`
+	ADRVersion    string `json:"adr_version"`
 	Timestamp     int64  `json:"timestamp"`
 	RootHash      string `json:"root_hash"`
 	NodeID        string `json:"node_id"`
@@ -45,6 +48,8 @@ func NewHTTPServer(cfg config.Config, engine *policy.Engine, auditLog *audit.Log
 		}
 		_ = json.NewEncoder(w).Encode(auditResponse{
 			Version:       1,
+			AppVersion:    version.App,
+			ADRVersion:    version.ADR,
 			Timestamp:     time.Now().Unix(),
 			RootHash:      rootHash,
 			NodeID:        cfg.Node.NodeID,

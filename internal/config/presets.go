@@ -1,6 +1,10 @@
 package config
 
-import "time"
+import (
+	"time"
+
+	"MRMI_Gateway/internal/version"
+)
 
 func DefaultBalancedConfig() Config {
 	return DefaultConfigForProfile("balanced")
@@ -13,7 +17,7 @@ func DefaultConfigForProfile(name string) Config {
 			NodeScope:     "regional",
 			Region:        "RS",
 			OperatorID:    "example-operator",
-			PolicyVersion: "0.1.0",
+			PolicyVersion: version.App,
 			ApplicableLaw: "RS-GDPR",
 			SignedBy:      "ed25519:REPLACE_ME",
 		},

@@ -7,7 +7,7 @@
 | Field        | Value                                                                                     |
 |--------------|-------------------------------------------------------------------------------------------|
 | ADR ID       | MRMI-ADR-001                                                                              |
-| Status       | PROPOSED                                                                                  |
+| Status       | ACCEPTED — Sprint 3 in progress (App v0.1.0)                                             |
 | Author       | Božidar Tadić                                                                             |
 | Version      | 0.8 — Node Tier model (Regional / Alliance / Global), node_scope field, ADR-006 expanded, corridor flexibility |
 | Supersedes   | v0.7                                                                                      |
