@@ -44,11 +44,12 @@ func (a *gatewayAdapter) SendEnvelope(ctx context.Context, req *SendEnvelopeRequ
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &SendEnvelopeResponse{
-		Decision:      string(resp.Decision),
-		Reason:        resp.Reason,
-		Profile:       resp.Profile,
-		NodeID:        resp.NodeID,
-		AuditRootHash: resp.AuditRootHash,
+		Decision:          string(resp.Decision),
+		Reason:            resp.Reason,
+		Profile:           resp.Profile,
+		NodeID:            resp.NodeID,
+		AuditRootHash:     resp.AuditRootHash,
+		PeerAuditRootHash: resp.PeerAuditRootHash,
 	}, nil
 }
 

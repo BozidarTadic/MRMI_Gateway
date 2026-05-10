@@ -1,13 +1,55 @@
 # Local Two-Node Test Guide
 
-This guide explains how to run an RS + RU corridor locally, verify both nodes are healthy, and exercise the full send / audit / dedup path.
+This guide explains how to run an RS + RU corridor locally, verify both nodes are healthy, and exercise the full send / audit / dedup / forwarding path.
 
 ## Prerequisites
 
 - Go 1.21 or later
 - `curl` (for HTTP endpoint checks)
+- OpenSSL or `scripts/gen-test-certs.sh` (for mTLS — optional for local dev with `insecure = true`)
 
-No additional tools are required. The gRPC layer is tested through the Go test suite (see [Automated integration test](#automated-integration-test) below). A CLI client is planned for Sprint 2.
+No additional tools are required. The gRPC layer is tested through the Go test suite (see [Automated integration test](#automated-integration-test) below).
+
+## mTLS certificate setup
+
+Inter-node gRPC uses mutual TLS per ADR-003. For local development the shipped configs default to `insecure = true`, which bypasses certificate verification. For a production-like setup, generate self-signed certs:
+
+```bash
+bash scripts/gen-test-certs.sh   # writes certs/ to the repo root
+```
+
+Then update both TOML configs to reference the generated paths:
+
+```toml
+[tls]
+cert = "certs/node.crt"
+key  = "certs/node.key"
+ca   = "certs/ca.crt"
+# insecure = false  (default; omit or set explicitly)
+```
+
+Integration tests use in-process cert generation via `internal/testcerts` so they do not require any external cert files.
+
+## Peer config
+
+Each node declares its peer in `[peers.<REGION>]`. The RS local config already points at RU:
+
+```toml
+# configs/node.rs.local.toml
+[peers.RU]
+addr       = "localhost:7778"
+node_scope = "regional"
+```
+
+Add the symmetric entry to `configs/node.ru.local.toml` for bidirectional forwarding:
+
+```toml
+[peers.RS]
+addr       = "localhost:7777"
+node_scope = "regional"
+```
+
+When a peer entry exists for the envelope's `recipient_region`, the node forwards the ALLOW'd envelope to that peer. When no entry exists, the node returns ALLOW without forwarding (backward-compatible single-node mode).
 
 ## Start both nodes
 
@@ -56,9 +98,29 @@ The audit endpoint returns a JSON object:
 
 `root_hash` starts as all-zeros (empty log). It changes after the first gRPC envelope is processed.
 
+## DLQ inspection
+
+When forwarding to a peer fails after all retries, the envelope moves to the dead-letter queue. Inspect via the gRPC `GetDLQEntries` call or the HTTP endpoint:
+
+```bash
+curl http://localhost:8080/dlq   # → JSON array of DLQ entries
+```
+
+Each entry shows the envelope, target peer address, number of attempts, and the last error. Entries remain in memory until the process restarts; persistence is a Sprint 3 milestone.
+
+## DNS TXT publishing
+
+When `dns_txt_publish = true` in the audit config, the node periodically emits its audit root hash to stdout (no external DNS provider required in dev mode):
+
+```
+v=1 ts=1746700000 root=sha256:abc123... node=rs-node-01
+```
+
+This value is intended to be published as a DNS TXT record at `_mrmi-audit.<node_id>` for independent third-party verification.
+
 ## Automated integration test
 
-The `internal/integration` package spins up both nodes in-process on random ports and exercises the full send / dedup / audit path:
+The `internal/integration` package spins up nodes in-process on random ports and exercises the full stack:
 
 ```bash
 go test ./internal/integration/... -v
@@ -71,16 +133,41 @@ Expected output:
 --- PASS: TestTwoNodeLocalCorridor
 === RUN   TestTwoNodeAuditRootsAreIndependent
 --- PASS: TestTwoNodeAuditRootsAreIndependent
+=== RUN   TestMTLS_RoundTrip
+--- PASS: TestMTLS_RoundTrip
+=== RUN   TestMTLS_InsecureClientRejected
+--- PASS: TestMTLS_InsecureClientRejected
+=== RUN   TestTwoNodeForwardingCorridor
+--- PASS: TestTwoNodeForwardingCorridor
+=== RUN   TestDLQAfterExhaustedRetries
+--- PASS: TestDLQAfterExhaustedRetries
 ```
 
 `TestTwoNodeLocalCorridor` verifies:
 
 1. RS node accepts an RS→RU envelope and returns `ALLOW` with a non-zero audit root hash.
-2. Replaying the same `idempotency_key` to RS returns `DUPLICATE` and advances the audit root (the duplicate is logged).
-3. The same `idempotency_key` sent to the **RU** node returns `ALLOW` — each node maintains an independent dedup store.
+2. Replaying the same `idempotency_key` to RS returns `DUPLICATE` and advances the audit root.
+3. The same `idempotency_key` sent to the **RU** node returns `ALLOW` — each node has an independent dedup store.
 4. A route not present in RU's allow-list (→US) returns `DENY`.
 
-`TestTwoNodeAuditRootsAreIndependent` confirms that the two Merkle chains never share a root hash, and that each chain passes `Verify()`.
+`TestTwoNodeAuditRootsAreIndependent` confirms the two Merkle chains never share a root hash, and each chain passes `Verify()`.
+
+`TestMTLS_RoundTrip` starts a node with self-signed mTLS certs and verifies a full round-trip with a mutually authenticated client.
+
+`TestMTLS_InsecureClientRejected` confirms that a client presenting no certificate is rejected by an mTLS server.
+
+`TestTwoNodeForwardingCorridor` wires RS→RU forwarding in-process:
+
+1. RS receives an RS→RU envelope, evaluates ALLOW locally.
+2. RS forwards the envelope to the RU node via gRPC.
+3. RU's audit log gains one ALLOW entry.
+4. RS response includes `peer_audit_root_hash` from RU.
+
+`TestDLQAfterExhaustedRetries` confirms that forwarding failures write to the DLQ:
+
+1. RS is configured with an unreachable peer address.
+2. Three envelopes are sent; each fails immediately (1 attempt, no backoff).
+3. The DLQ has ≥ 3 entries; the local RS response still returns `ALLOW`.
 
 ## Run the full test suite
 
@@ -99,29 +186,3 @@ All packages must pass before any changes are merged.
 | `configs/node.balanced.toml` | RS | `:7777` | `:8080` | RU, BY, KZ, AM |
 
 `node.balanced.toml` and `node.rs.local.toml` are equivalent. The `.local.toml` variants are the canonical configs for the two-node corridor scenario.
-
-## Current limitations (Sprint 1)
-
-The following features are out of scope for Sprint 1 and will be addressed in Sprint 2 and later.
-
-### No mTLS between nodes
-
-Inter-node gRPC currently uses an **insecure** connection (`grpc.WithInsecure()`). ADR-003 requires mutual TLS for all inter-node traffic. Until mTLS is implemented, do not expose node gRPC ports on a network boundary.
-
-The `signed_by = "ed25519:REPLACE_ME"` value in the config files is a placeholder. Real deployments require a generated Ed25519 key pair and a valid certificate chain. The `/.well-known/mrmi-audit` endpoint returns `signed_by` as a plain string — the response is not yet cryptographically signed.
-
-### No DNS TXT publishing
-
-The `dns_txt_publish = true` flag is parsed and stored in config but the publisher goroutine does not exist yet. Audit root hashes are only accessible via `/.well-known/mrmi-audit`. Independent DNS-based verification is not available in this release.
-
-### No dead-letter queue or retry
-
-Failed envelope delivery has no retry path. If a node is unreachable, the sender receives a gRPC transport error. There is no DLQ, no backoff retry, and no persistence of undelivered envelopes. At-least-once delivery is enforced only by the idempotency key dedup on the receiving side — the sending side provides no retry guarantee.
-
-### Timing jitter and payload padding not applied
-
-`ProfileConfig.TimingJitterMax` and `ProfileConfig.PaddingBucket` are parsed from config but are not applied in `SendEnvelope`. Traffic analysis resistance is not active in this release.
-
-### No forwarding between nodes
-
-The gateway evaluates routing policy and returns a decision, but does not forward envelopes from RS to RU automatically. Actual inter-node forwarding is a Sprint 2 milestone.

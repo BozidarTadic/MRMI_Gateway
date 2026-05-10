@@ -19,11 +19,12 @@ type SendEnvelopeRequest struct {
 }
 
 type SendEnvelopeResponse struct {
-	Decision      string `json:"decision"`
-	Reason        string `json:"reason"`
-	Profile       string `json:"profile"`
-	NodeID        string `json:"node_id"`
-	AuditRootHash string `json:"audit_root_hash"`
+	Decision          string `json:"decision"`
+	Reason            string `json:"reason"`
+	Profile           string `json:"profile"`
+	NodeID            string `json:"node_id"`
+	AuditRootHash     string `json:"audit_root_hash"`
+	PeerAuditRootHash string `json:"peer_audit_root_hash,omitempty"`
 }
 
 type GetNodeInfoRequest struct{}

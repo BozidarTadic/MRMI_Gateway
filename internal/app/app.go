@@ -59,12 +59,12 @@ func Run(ctx context.Context, cfg config.Config) error {
 	dlq := delivery.NewDLQ()
 	var fwd core.Forwarder
 	if len(cfg.Network.Peers) > 0 {
-		fwd = delivery.NewForwarder(cfg, dlq, func(ctx context.Context, addr string, env core.Envelope) error {
+		fwd = delivery.NewForwarder(cfg, dlq, func(ctx context.Context, addr string, env core.Envelope) (string, error) {
 			dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 			client, err := grpctransport.Dial(dialCtx, addr, clientTLS)
 			if err != nil {
-				return fmt.Errorf("dial %s: %w", addr, err)
+				return "", fmt.Errorf("dial %s: %w", addr, err)
 			}
 			defer client.Close()
 			resp, err := client.SendEnvelope(ctx, &grpctransport.SendEnvelopeRequest{
@@ -83,12 +83,12 @@ func Run(ctx context.Context, cfg config.Config) error {
 				},
 			})
 			if err != nil {
-				return err
+				return "", err
 			}
 			if resp.Decision == "DENY" {
-				return fmt.Errorf("peer denied envelope: %s", resp.Reason)
+				return "", fmt.Errorf("peer denied envelope: %s", resp.Reason)
 			}
-			return nil
+			return resp.AuditRootHash, nil
 		})
 	}
 

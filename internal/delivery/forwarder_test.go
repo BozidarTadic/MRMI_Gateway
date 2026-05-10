@@ -105,17 +105,20 @@ func TestForward_SuccessOnFirstPeer(t *testing.T) {
 	})
 
 	var called string
-	f := NewForwarder(cfg, nil, func(_ context.Context, addr string, _ core.Envelope) error {
+	f := NewForwarder(cfg, nil, func(_ context.Context, addr string, _ core.Envelope) (string, error) {
 		called = addr
-		return nil
+		return "peer-root-hash", nil
 	})
 
-	addr, err := f.Forward(context.Background(), core.Envelope{RecipientRegion: "RU"})
+	peerRoot, err := f.Forward(context.Background(), core.Envelope{RecipientRegion: "RU"})
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
-	if addr != "ru:7777" || called != "ru:7777" {
-		t.Fatalf("expected ru:7777, got addr=%q called=%q", addr, called)
+	if called != "ru:7777" {
+		t.Fatalf("expected ru:7777 to be called, got %q", called)
+	}
+	if peerRoot != "peer-root-hash" {
+		t.Fatalf("expected peer root hash, got %q", peerRoot)
 	}
 }
 
@@ -129,20 +132,20 @@ func TestForward_FallsBackToNextTier(t *testing.T) {
 		"global-01": {Addr: "global:7777", NodeScope: "global"},
 	})
 
-	f := NewForwarder(cfg, nil, func(_ context.Context, addr string, _ core.Envelope) error {
+	f := NewForwarder(cfg, nil, func(_ context.Context, addr string, _ core.Envelope) (string, error) {
 		if addr == "ru:7777" {
-			return errors.New("unreachable")
+			return "", errors.New("unreachable")
 		}
-		return nil
+		return "global-root-hash", nil
 	})
 	f.retryPolicy = singleAttempt()
 
-	addr, err := f.Forward(context.Background(), core.Envelope{RecipientRegion: "RU"})
+	peerRoot, err := f.Forward(context.Background(), core.Envelope{RecipientRegion: "RU"})
 	if err != nil {
 		t.Fatalf("expected fallback success, got %v", err)
 	}
-	if addr != "global:7777" {
-		t.Fatalf("expected global:7777 fallback, got %q", addr)
+	if peerRoot != "global-root-hash" {
+		t.Fatalf("expected global fallback root hash, got %q", peerRoot)
 	}
 }
 
@@ -152,8 +155,8 @@ func TestForward_WritesToDLQOnExhaustion(t *testing.T) {
 	})
 
 	dlq := NewDLQ()
-	f := NewForwarder(cfg, dlq, func(_ context.Context, _ string, _ core.Envelope) error {
-		return errors.New("always fails")
+	f := NewForwarder(cfg, dlq, func(_ context.Context, _ string, _ core.Envelope) (string, error) {
+		return "", errors.New("always fails")
 	})
 	f.retryPolicy = singleAttempt()
 

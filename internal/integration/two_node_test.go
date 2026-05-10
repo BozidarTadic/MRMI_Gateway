@@ -5,6 +5,8 @@ package integration
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/dedup"
+	"MRMI_Gateway/internal/delivery"
 	"MRMI_Gateway/internal/policy"
 	grpctransport "MRMI_Gateway/internal/transport/grpc"
 )
@@ -21,11 +24,18 @@ import (
 type node struct {
 	client   *grpctransport.Client
 	auditLog *audit.Log
+	addr     string // dialable address (localhost:PORT)
 }
 
-// startNode wires all gateway components, binds gRPC on a random port,
-// and registers cleanup with t. Returns an active gRPC client and the
-// shared audit log.
+// nodeWithDLQ extends node with a DLQ reference for forwarding tests.
+type nodeWithDLQ struct {
+	client   *grpctransport.Client
+	auditLog *audit.Log
+	dlq      *delivery.DLQ
+}
+
+// startNode wires all gateway components (no forwarder), binds gRPC on a random
+// port, and registers cleanup with t.
 func startNode(t *testing.T, cfg config.Config) node {
 	t.Helper()
 
@@ -48,15 +58,99 @@ func startNode(t *testing.T, cfg config.Config) node {
 		_ = srv.Shutdown(ctx)
 	})
 
+	_, port, err := net.SplitHostPort(srv.Addr())
+	if err != nil {
+		t.Fatalf("startNode %s: parse addr %q: %v", cfg.Node.NodeID, srv.Addr(), err)
+	}
+	dialAddr := fmt.Sprintf("localhost:%s", port)
+
 	dialCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	client, err := grpctransport.Dial(dialCtx, srv.Addr(), nil)
+	client, err := grpctransport.Dial(dialCtx, dialAddr, nil)
 	if err != nil {
-		t.Fatalf("startNode %s: dial %s: %v", cfg.Node.NodeID, srv.Addr(), err)
+		t.Fatalf("startNode %s: dial %s: %v", cfg.Node.NodeID, dialAddr, err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
 
-	return node{client: client, auditLog: auditLog}
+	return node{client: client, auditLog: auditLog, addr: dialAddr}
+}
+
+// startNodeFwd wires gateway components with a live forwarder, binds gRPC on a
+// random port, and registers cleanup with t. send is the transport function used
+// by the forwarder; retryPolicy controls backoff and attempt limits.
+func startNodeFwd(t *testing.T, cfg config.Config, retryPolicy delivery.RetryPolicy, send func(context.Context, string, core.Envelope) (string, error)) nodeWithDLQ {
+	t.Helper()
+
+	dlq := delivery.NewDLQ()
+	fwd := delivery.NewForwarderWithPolicy(cfg, dlq, send, retryPolicy)
+
+	auditLog := audit.New()
+	engine, err := policy.NewEngine(cfg, auditLog)
+	if err != nil {
+		t.Fatalf("startNodeFwd %s: policy engine: %v", cfg.Node.NodeID, err)
+	}
+
+	gw := core.NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL), fwd)
+	srv, err := grpctransport.NewServer(":0", grpctransport.NewAdapter(gw), nil)
+	if err != nil {
+		t.Fatalf("startNodeFwd %s: grpc server: %v", cfg.Node.NodeID, err)
+	}
+
+	go func() { _ = srv.Serve() }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	})
+
+	_, port, err := net.SplitHostPort(srv.Addr())
+	if err != nil {
+		t.Fatalf("startNodeFwd %s: parse addr: %v", cfg.Node.NodeID, err)
+	}
+
+	dialCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	client, err := grpctransport.Dial(dialCtx, fmt.Sprintf("localhost:%s", port), nil)
+	if err != nil {
+		t.Fatalf("startNodeFwd %s: dial: %v", cfg.Node.NodeID, err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	return nodeWithDLQ{client: client, auditLog: auditLog, dlq: dlq}
+}
+
+// grpcSend returns a send function that dials addr and forwards env via gRPC,
+// returning the peer's audit root hash on success.
+func grpcSend(ctx context.Context, addr string, env core.Envelope) (string, error) {
+	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	c, err := grpctransport.Dial(dialCtx, addr, nil)
+	if err != nil {
+		return "", fmt.Errorf("dial %s: %w", addr, err)
+	}
+	defer c.Close()
+	resp, err := c.SendEnvelope(ctx, &grpctransport.SendEnvelopeRequest{
+		Envelope: grpctransport.Envelope{
+			IdempotencyKey:    env.IdempotencyKey,
+			SenderIdentity:    env.SenderIdentity,
+			RecipientIdentity: env.RecipientIdentity,
+			SenderRegion:      env.SenderRegion,
+			RecipientRegion:   env.RecipientRegion,
+			TrustTier:         env.TrustTier,
+			SequenceNumber:    env.SequenceNumber,
+			Payload:           env.Payload,
+			PaddedTo:          env.PaddedTo,
+			Timestamp:         env.Timestamp,
+			Signature:         env.Signature,
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if resp.Decision == "DENY" {
+		return "", fmt.Errorf("peer denied: %s", resp.Reason)
+	}
+	return resp.AuditRootHash, nil
 }
 
 func rsConfig() config.Config {
@@ -204,5 +298,90 @@ func TestTwoNodeAuditRootsAreIndependent(t *testing.T) {
 	}
 	if err := ru.auditLog.Verify(); err != nil {
 		t.Fatalf("RU audit chain: %v", err)
+	}
+}
+
+// TestTwoNodeForwardingCorridor verifies that an ALLOW decision on RS triggers
+// forwarding to RU and that RU's audit log gains an entry.
+func TestTwoNodeForwardingCorridor(t *testing.T) {
+	// RU accepts envelopes addressed to itself; add "RU" to its allow_to so the
+	// policy engine does not deny the forwarded envelope.
+	ruCfg := ruConfig()
+	ruCfg.Policy.Outbound.AllowTo = append(ruCfg.Policy.Outbound.AllowTo, "RU")
+	ruCfg.Profile.TimingJitterMax = 0 // no jitter in tests
+	ru := startNode(t, ruCfg)
+
+	rsCfg := rsConfig()
+	rsCfg.Profile.TimingJitterMax = 0 // no jitter in tests
+	rsCfg.Network.Peers = map[string]config.PeerConfig{
+		"RU": {Addr: ru.addr, NodeScope: "regional"},
+	}
+
+	fastPolicy := delivery.RetryPolicy{MaxAttempts: 1, BaseDelay: 0, Multiplier: 1, Cap: time.Millisecond}
+	rs := startNodeFwd(t, rsCfg, fastPolicy, grpcSend)
+
+	ctx := context.Background()
+	resp, err := rs.client.SendEnvelope(ctx, &grpctransport.SendEnvelopeRequest{
+		Envelope: grpctransport.Envelope{
+			IdempotencyKey:  "corridor-fwd-001",
+			SenderRegion:    "RS",
+			RecipientRegion: "RU",
+		},
+	})
+	if err != nil {
+		t.Fatalf("RS SendEnvelope: %v", err)
+	}
+	if resp.Decision != "ALLOW" {
+		t.Fatalf("expected ALLOW, got %q (%s)", resp.Decision, resp.Reason)
+	}
+
+	// RU must have received and processed the forwarded envelope.
+	if entries := ru.auditLog.Entries(); len(entries) != 1 {
+		t.Fatalf("expected 1 entry in RU audit log after forwarding, got %d", len(entries))
+	}
+
+	// RS response must carry the peer's audit root hash.
+	if resp.PeerAuditRootHash == "" {
+		t.Fatal("expected non-empty PeerAuditRootHash in RS response")
+	}
+}
+
+// TestDLQAfterExhaustedRetries verifies that forwarding failures exhaust retries
+// and write entries to the DLQ while the local node still returns ALLOW.
+func TestDLQAfterExhaustedRetries(t *testing.T) {
+	rsCfg := rsConfig()
+	rsCfg.Profile.TimingJitterMax = 0
+	rsCfg.Network.Peers = map[string]config.PeerConfig{
+		"RU": {Addr: "localhost:1", NodeScope: "regional"},
+	}
+
+	// Immediately-failing send; no network I/O needed.
+	alwaysFail := func(_ context.Context, _ string, _ core.Envelope) (string, error) {
+		return "", fmt.Errorf("unreachable")
+	}
+	fastPolicy := delivery.RetryPolicy{MaxAttempts: 1, BaseDelay: 0, Multiplier: 1, Cap: time.Millisecond}
+	rs := startNodeFwd(t, rsCfg, fastPolicy, alwaysFail)
+
+	ctx := context.Background()
+	const n = 3
+	for i := 0; i < n; i++ {
+		resp, err := rs.client.SendEnvelope(ctx, &grpctransport.SendEnvelopeRequest{
+			Envelope: grpctransport.Envelope{
+				IdempotencyKey:  fmt.Sprintf("dlq-%03d", i),
+				SenderRegion:    "RS",
+				RecipientRegion: "RU",
+			},
+		})
+		if err != nil {
+			t.Fatalf("send dlq-%03d: unexpected gRPC error: %v", i, err)
+		}
+		// Local policy still ALLOWs; forwarding failure does not change the local decision.
+		if resp.Decision != "ALLOW" {
+			t.Fatalf("send dlq-%03d: expected ALLOW (local policy), got %q", i, resp.Decision)
+		}
+	}
+
+	if got := rs.dlq.Size(); got < n {
+		t.Fatalf("expected DLQ to have ≥%d entries after %d failed forwards, got %d", n, n, got)
 	}
 }

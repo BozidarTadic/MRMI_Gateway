@@ -16,13 +16,21 @@ type Forwarder struct {
 	cfg         config.Config
 	dlq         *DLQ
 	retryPolicy RetryPolicy
-	send        func(ctx context.Context, addr string, env core.Envelope) error
+	send        func(ctx context.Context, addr string, env core.Envelope) (peerRootHash string, err error)
 }
 
-// NewForwarder creates a Forwarder. send is the transport function (typically a
-// gRPC call). dlq receives entries when all peers and all retries are exhausted.
-func NewForwarder(cfg config.Config, dlq *DLQ, send func(ctx context.Context, addr string, env core.Envelope) error) *Forwarder {
+// NewForwarder creates a Forwarder with the default ADR-007 retry policy.
+// send is the transport function (typically a gRPC call) that returns the
+// peer's audit root hash on success. dlq receives entries when all peers and
+// all retries are exhausted.
+func NewForwarder(cfg config.Config, dlq *DLQ, send func(ctx context.Context, addr string, env core.Envelope) (string, error)) *Forwarder {
 	return &Forwarder{cfg: cfg, dlq: dlq, retryPolicy: DefaultRetryPolicy(), send: send}
+}
+
+// NewForwarderWithPolicy creates a Forwarder with a custom retry policy.
+// Useful in tests to avoid multi-second backoff delays.
+func NewForwarderWithPolicy(cfg config.Config, dlq *DLQ, send func(ctx context.Context, addr string, env core.Envelope) (string, error), policy RetryPolicy) *Forwarder {
+	return &Forwarder{cfg: cfg, dlq: dlq, retryPolicy: policy, send: send}
 }
 
 // PeersFor returns candidate peers for recipientRegion in tier-preference order:
@@ -54,8 +62,8 @@ func (f *Forwarder) PeersFor(recipientRegion string) []config.PeerConfig {
 }
 
 // Forward attempts delivery to candidate peers in tier-preference order, applying
-// the default retry policy per peer. The envelope is written to the DLQ only after
-// all peers and all their retries are exhausted. Satisfies core.Forwarder.
+// the configured retry policy per peer. The envelope is written to the DLQ only
+// after all peers and all their retries are exhausted. Satisfies core.Forwarder.
 func (f *Forwarder) Forward(ctx context.Context, env core.Envelope) (string, error) {
 	peers := f.PeersFor(env.RecipientRegion)
 	if len(peers) == 0 {
@@ -64,11 +72,14 @@ func (f *Forwarder) Forward(ctx context.Context, env core.Envelope) (string, err
 
 	for _, peer := range peers {
 		addr := peer.Addr
+		var peerRootHash string
 		err := SendWithRetry(ctx, func() error {
-			return f.send(ctx, addr, env)
+			var sendErr error
+			peerRootHash, sendErr = f.send(ctx, addr, env)
+			return sendErr
 		}, f.retryPolicy, nil, DLQEntry{Envelope: env, PeerAddr: addr})
 		if err == nil {
-			return addr, nil
+			return peerRootHash, nil
 		}
 	}
 

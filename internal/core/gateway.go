@@ -16,9 +16,10 @@ import (
 var ErrEmptyIdempotencyKey = errors.New("idempotency_key is required")
 
 // Forwarder delivers an envelope to a peer node chosen by tier-preference routing.
-// Implementations must handle DLQ writes internally on exhausted retries.
+// Returns the peer's audit root hash on success. Implementations must handle DLQ
+// writes internally on exhausted retries.
 type Forwarder interface {
-	Forward(ctx context.Context, env Envelope) (addr string, err error)
+	Forward(ctx context.Context, env Envelope) (peerRootHash string, err error)
 }
 
 type Decision string
@@ -48,11 +49,12 @@ type SendRequest struct {
 }
 
 type SendResponse struct {
-	Decision      Decision
-	Reason        string
-	Profile       string
-	NodeID        string
-	AuditRootHash string
+	Decision          Decision
+	Reason            string
+	Profile           string
+	NodeID            string
+	AuditRootHash     string
+	PeerAuditRootHash string // non-empty when the envelope was forwarded to a peer
 }
 
 type NodeInfo struct {
@@ -106,19 +108,21 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 		TrustTier:       req.Envelope.TrustTier,
 	})
 
+	var peerRootHash string
 	if result.Decision == policy.DecisionAllow && g.forwarder != nil {
 		if err := applyJitter(ctx, g.cfg.Profile.TimingJitterMax); err == nil {
 			env := applyPadding(req.Envelope, g.cfg.Profile.PaddingBucket)
-			_, _ = g.forwarder.Forward(ctx, env)
+			peerRootHash, _ = g.forwarder.Forward(ctx, env)
 		}
 	}
 
 	return SendResponse{
-		Decision:      Decision(result.Decision),
-		Reason:        result.Reason,
-		Profile:       result.Profile,
-		NodeID:        g.cfg.Node.NodeID,
-		AuditRootHash: g.audit.RootHash(),
+		Decision:          Decision(result.Decision),
+		Reason:            result.Reason,
+		Profile:           result.Profile,
+		NodeID:            g.cfg.Node.NodeID,
+		AuditRootHash:     g.audit.RootHash(),
+		PeerAuditRootHash: peerRootHash,
 	}, nil
 }
 

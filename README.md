@@ -49,7 +49,7 @@ Full architecture: [docs/ADR_v0.5.md](docs/ADR_v0.5.md)
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.1 (Sprint 1 complete)
+## Current Status — v0.1 (Sprint 2 complete)
 
 - [x] Protobuf contracts (`proto/mrmi/v1/contracts.proto`)
 - [x] Config model — TOML parser, 3 profiles, `Config.Validate()`
@@ -60,10 +60,11 @@ Full architecture: [docs/ADR_v0.5.md](docs/ADR_v0.5.md)
 - [x] App wiring + graceful shutdown
 - [x] Dedup index — idempotency key store with TTL, duplicate decisions logged to audit
 - [x] Local two-node RS/RU corridor — integration test + local configs
-- [ ] mTLS on all inter-node gRPC (Sprint 2)
-- [ ] Timing jitter + payload padding (config wired, not applied — Sprint 2)
-- [ ] DNS TXT root hash publisher (Sprint 2)
-- [ ] Envelope forwarding between nodes (Sprint 2)
+- [x] mTLS on all inter-node gRPC (`tlsutil` package, TLS 1.3 minimum)
+- [x] Timing jitter + payload padding (applied on balanced/strict profiles before forwarding)
+- [x] DNS TXT root hash publisher (stdout/file on configured interval)
+- [x] Envelope forwarding between nodes (tier-preference routing: Regional → Alliance → Global → DLQ)
+- [x] Retry with exponential backoff and dead-letter queue (`delivery` package)
 - [ ] .NET SDK (Milestone 4)
 - [ ] CLI reference client (open for contributors)
 - [ ] Java SDK (open for contributors)
