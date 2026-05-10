@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
+	"time"
 
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
@@ -105,9 +107,10 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 	})
 
 	if result.Decision == policy.DecisionAllow && g.forwarder != nil {
-		// Fire-and-forget: delivery is at-least-once; forwarding failures are handled
-		// by the forwarder (retry + DLQ). The policy decision is still returned to the caller.
-		_, _ = g.forwarder.Forward(ctx, req.Envelope)
+		if err := applyJitter(ctx, g.cfg.Profile.TimingJitterMax); err == nil {
+			env := applyPadding(req.Envelope, g.cfg.Profile.PaddingBucket)
+			_, _ = g.forwarder.Forward(ctx, env)
+		}
 	}
 
 	return SendResponse{
@@ -117,6 +120,38 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 		NodeID:        g.cfg.Node.NodeID,
 		AuditRootHash: g.audit.RootHash(),
 	}, nil
+}
+
+// applyJitter sleeps a random duration in [0, max) before forwarding.
+// Returns ctx.Err() if the context is cancelled during the sleep, which
+// signals the caller to skip forwarding for this request.
+func applyJitter(ctx context.Context, max time.Duration) error {
+	if max <= 0 {
+		return nil
+	}
+	delay := time.Duration(rand.Int64N(int64(max)))
+	select {
+	case <-time.After(delay):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// applyPadding rounds the envelope payload up to the nearest bucket boundary
+// and sets PaddedTo accordingly. Returns the envelope unchanged when bucket
+// is zero (performance profile) or the payload is empty.
+func applyPadding(env Envelope, bucket int) Envelope {
+	if bucket <= 0 || len(env.Payload) == 0 {
+		return env
+	}
+	n := len(env.Payload)
+	target := ((n + bucket - 1) / bucket) * bucket
+	padded := make([]byte, target)
+	copy(padded, env.Payload)
+	env.Payload = padded
+	env.PaddedTo = uint32(target)
+	return env
 }
 
 func (g *Gateway) GetNodeInfo(_ context.Context) (NodeInfo, error) {
