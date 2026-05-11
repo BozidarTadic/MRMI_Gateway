@@ -8,7 +8,7 @@
     <RootNamespace>MRMI.Gateway.Client</RootNamespace>
     <AssemblyName>MRMI.Gateway.Client</AssemblyName>
     <PackageId>MRMI.Gateway.Client</PackageId>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <Authors>Božidar Tadić</Authors>
     <Description>Official .NET SDK for the MRMI Gateway — multi-regional messaging corridor client.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

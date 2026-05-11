@@ -1,0 +1,41 @@
+[node]
+node_id        = "global-relay-01"
+node_scope     = "global"
+region         = ""
+disclaimer     = "no-data-residency-claims"
+operator_id    = "global-ops"
+policy_version = "0.4.0"
+applicable_law = "NONE"
+signed_by      = "ed25519:REPLACE_ME"
+
+[profile]
+name = "performance"
+
+[policy.outbound]
+allow_to      = []
+deny_to       = []
+store_locally = false
+
+[policy.inbound]
+min_trust_tier = 0
+
+[policy.audit]
+log_all_decisions   = true
+log_backend         = "local-merkle"
+dns_txt_publish     = false
+https_well_known    = true
+
+[network]
+grpc_listen_addr = "0.0.0.0:7777"
+http_listen_addr = "0.0.0.0:8080"
+metrics_addr     = "0.0.0.0:9090"
+
+[tls]
+cert     = "/etc/mrmi/node.crt"
+key      = "/etc/mrmi/node.key"
+ca       = "/etc/mrmi/ca.crt"
+insecure = false
+
+[storage]
+backend = "bbolt"
+path    = "/var/lib/mrmi"

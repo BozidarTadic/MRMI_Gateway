@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -35,6 +36,12 @@ public sealed class MrmiClient : IDisposable
             _http = new HttpClient { Timeout = options.Timeout };
             _ownsClient = true;
         }
+
+        if (options.JwtToken is not null)
+            _http.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", options.JwtToken);
+        else if (options.ApiKey is not null)
+            _http.DefaultRequestHeaders.Add("X-MRMI-Key", options.ApiKey);
     }
 
     // ── Envelope send ────────────────────────────────────────────────────────
@@ -253,6 +260,58 @@ public sealed class MrmiClient : IDisposable
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ConnectResult>(_json, cancellationToken)
                ?? throw new InvalidOperationException("Empty response.");
+    }
+
+    // ── JWT token issuance (v0.3) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Issue a short-lived JWT bearer token.  Requires operator API key authentication.
+    /// </summary>
+    /// <param name="scope">"read" or "operator". Defaults to "read".</param>
+    /// <param name="ttlMinutes">Token lifetime in minutes (1–1440). Defaults to 60.</param>
+    public async Task<IssuedToken> IssueTokenAsync(
+        string scope = "read",
+        int ttlMinutes = 60,
+        CancellationToken cancellationToken = default)
+    {
+        var body = new { scope, ttl_minutes = ttlMinutes };
+        var response = await _http.PostAsJsonAsync(
+            $"{_baseUrl}/api/v1/token", body, _json, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<IssuedToken>(_json, cancellationToken)
+               ?? throw new InvalidOperationException("Empty response.");
+    }
+
+    // ── App management (v0.3) ─────────────────────────────────────────────────
+
+    /// <summary>Return all apps registered on this node.</summary>
+    public async Task<IReadOnlyList<AppInfo>> ListAppsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.GetAsync($"{_baseUrl}/api/v1/apps", cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<AppInfo>>(_json, cancellationToken)
+               ?? [];
+    }
+
+    /// <summary>Register a new application. Requires operator scope.</summary>
+    public async Task<AppInfo> RegisterAppAsync(
+        RegisterAppRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync(
+            $"{_baseUrl}/api/v1/apps/register", request, _json, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AppInfo>(_json, cancellationToken)
+               ?? throw new InvalidOperationException("Empty response.");
+    }
+
+    /// <summary>Delete a registered application. Requires operator scope.</summary>
+    public async Task DeleteAppAsync(string appId, CancellationToken cancellationToken = default)
+    {
+        var response = await _http.DeleteAsync(
+            $"{_baseUrl}/api/v1/apps/{Uri.EscapeDataString(appId)}", cancellationToken);
+        response.EnsureSuccessStatusCode();
     }
 
     public void Dispose()

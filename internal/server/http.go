@@ -776,6 +776,51 @@ func NewHTTPServer(cfg config.Config, deps ServerDeps) *HTTPServer {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
+	// POST /api/v1/token — issue a short-lived JWT (requires API key auth).
+	mux.HandleFunc("POST /api/v1/token", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(cfg.API.APIKey, "", "read", r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if cfg.API.JWTSecret == "" {
+			http.Error(w, "JWT not configured on this node", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			Scope      string `json:"scope"`
+			TTLMinutes int    `json:"ttl_minutes"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if req.Scope != "read" && req.Scope != "operator" {
+			req.Scope = "read"
+		}
+		if req.TTLMinutes <= 0 || req.TTLMinutes > 1440 {
+			req.TTLMinutes = 60
+		}
+		expiresAt := time.Now().Add(time.Duration(req.TTLMinutes) * time.Minute)
+		claims := jwt.MapClaims{
+			"scope": req.Scope,
+			"exp":   expiresAt.Unix(),
+			"iat":   time.Now().Unix(),
+			"jti":   uuid.NewString(),
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		signed, err := token.SignedString([]byte(cfg.API.JWTSecret))
+		if err != nil {
+			http.Error(w, "token signing failed", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"token":      signed,
+			"scope":      req.Scope,
+			"expires_at": expiresAt.Unix(),
+		})
+	})
+
 	// Wrap the mux with a CORS middleware so all endpoints respond correctly
 	// to preflight OPTIONS without conflicting with Go 1.22 pattern specificity rules.
 	corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

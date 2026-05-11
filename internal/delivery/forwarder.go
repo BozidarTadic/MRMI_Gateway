@@ -7,30 +7,32 @@ import (
 
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/core"
+	"MRMI_Gateway/internal/transit"
 )
 
 // Forwarder selects the best peer for a given recipient region and forwards
 // the envelope. Path selection follows ADR-006 tier preference:
-// Regional → Alliance → Global → DLQ.
+// Regional → Alliance → Global → Transit Cache → DLQ.
 type Forwarder struct {
-	cfg         config.Config
-	dlq         *DLQ
-	retryPolicy RetryPolicy
-	send        func(ctx context.Context, addr string, env core.Envelope) (peerRootHash string, err error)
+	cfg          config.Config
+	dlq          *DLQ
+	transitCache *transit.Cache // nil when transit cache is disabled
+	retryPolicy  RetryPolicy
+	send         func(ctx context.Context, addr string, env core.Envelope) (peerRootHash string, err error)
 }
 
 // NewForwarder creates a Forwarder with the default ADR-007 retry policy.
 // send is the transport function (typically a gRPC call) that returns the
 // peer's audit root hash on success. dlq receives entries when all peers and
-// all retries are exhausted.
-func NewForwarder(cfg config.Config, dlq *DLQ, send func(ctx context.Context, addr string, env core.Envelope) (string, error)) *Forwarder {
-	return &Forwarder{cfg: cfg, dlq: dlq, retryPolicy: DefaultRetryPolicy(), send: send}
+// all retries are exhausted. tc may be nil to disable the transit buffer.
+func NewForwarder(cfg config.Config, dlq *DLQ, tc *transit.Cache, send func(ctx context.Context, addr string, env core.Envelope) (string, error)) *Forwarder {
+	return &Forwarder{cfg: cfg, dlq: dlq, transitCache: tc, retryPolicy: DefaultRetryPolicy(), send: send}
 }
 
 // NewForwarderWithPolicy creates a Forwarder with a custom retry policy.
 // Useful in tests to avoid multi-second backoff delays.
-func NewForwarderWithPolicy(cfg config.Config, dlq *DLQ, send func(ctx context.Context, addr string, env core.Envelope) (string, error), policy RetryPolicy) *Forwarder {
-	return &Forwarder{cfg: cfg, dlq: dlq, retryPolicy: policy, send: send}
+func NewForwarderWithPolicy(cfg config.Config, dlq *DLQ, tc *transit.Cache, send func(ctx context.Context, addr string, env core.Envelope) (string, error), policy RetryPolicy) *Forwarder {
+	return &Forwarder{cfg: cfg, dlq: dlq, transitCache: tc, retryPolicy: policy, send: send}
 }
 
 // PeersFor returns candidate peers for recipientRegion in tier-preference order:
@@ -83,6 +85,12 @@ func (f *Forwarder) Forward(ctx context.Context, env core.Envelope) (string, err
 		}
 	}
 
+	// Transit cache buffers the envelope for a short TTL before DLQ promotion,
+	// giving transient peer failures a second delivery window (ADR §4.3).
+	if f.transitCache != nil {
+		f.transitCache.Put(env, peers[0].Addr)
+		return "", fmt.Errorf("all peers exhausted for region %q; buffered in transit cache", env.RecipientRegion)
+	}
 	if f.dlq != nil {
 		f.dlq.Append(DLQEntry{Envelope: env, PeerAddr: peers[0].Addr})
 	}

@@ -11,6 +11,8 @@ import respx
 from mrmi_gateway import (
     MrmiClient,
     MrmiClientOptions,
+    RegisterAppRequest,
+    AutoAcceptMode,
     SendEnvelopeRequest,
     DiscoveryQueryType,
 )
@@ -295,3 +297,124 @@ def test_api_key_sent_as_header():
         client.get_status()
 
     assert captured_headers.get("x-mrmi-key") == "secret-key"
+
+
+# ── JWT auth header (v0.3) ────────────────────────────────────────────────────
+
+@respx.mock
+def test_jwt_token_sent_as_bearer_header():
+    captured_headers: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured_headers.update(dict(request.headers))
+        return httpx.Response(200, json={
+            "node_id": "", "region": "", "node_scope": "",
+            "profile": "", "applicable_law": "",
+            "app_version": "", "adr_version": "", "uptime_seconds": 0,
+        })
+
+    respx.get(f"{BASE}/api/v1/status").mock(side_effect=capture)
+    opts = MrmiClientOptions(base_url=BASE, jwt_token="my.jwt.token")
+    with MrmiClient(opts) as client:
+        client.get_status()
+
+    assert captured_headers.get("authorization") == "Bearer my.jwt.token"
+
+
+@respx.mock
+def test_jwt_takes_precedence_over_api_key():
+    captured_headers: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured_headers.update(dict(request.headers))
+        return httpx.Response(200, json={
+            "node_id": "", "region": "", "node_scope": "",
+            "profile": "", "applicable_law": "",
+            "app_version": "", "adr_version": "", "uptime_seconds": 0,
+        })
+
+    respx.get(f"{BASE}/api/v1/status").mock(side_effect=capture)
+    opts = MrmiClientOptions(base_url=BASE, api_key="k", jwt_token="my.jwt.token")
+    with MrmiClient(opts) as client:
+        client.get_status()
+
+    assert captured_headers.get("authorization") == "Bearer my.jwt.token"
+    assert "x-mrmi-key" not in captured_headers
+
+
+# ── issue_token (v0.3) ────────────────────────────────────────────────────────
+
+@respx.mock
+def test_issue_token_returns_issued_token():
+    respx.post(f"{BASE}/api/v1/token").mock(return_value=httpx.Response(
+        200, json={"token": "signed.jwt.here", "scope": "operator", "expires_at": 9999999},
+    ))
+    with make_client(api_key="secret") as client:
+        issued = client.issue_token(scope="operator", ttl_minutes=30)
+    assert issued.token == "signed.jwt.here"
+    assert issued.scope == "operator"
+    assert issued.expires_at == 9999999
+
+
+@respx.mock
+def test_issue_token_raises_on_error():
+    respx.post(f"{BASE}/api/v1/token").mock(
+        return_value=httpx.Response(503, text="JWT not configured")
+    )
+    with make_client(api_key="secret") as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            client.issue_token()
+
+
+# ── app management (v0.3) ─────────────────────────────────────────────────────
+
+@respx.mock
+def test_list_apps_returns_list():
+    respx.get(f"{BASE}/api/v1/apps").mock(return_value=httpx.Response(
+        200,
+        json=[{"app_id": "my-app", "webhook_url": "https://example.com/hook", "auto_accept": "manual"}],
+    ))
+    with make_client(api_key="secret") as client:
+        apps = client.list_apps()
+    assert len(apps) == 1
+    assert apps[0].app_id == "my-app"
+    assert apps[0].webhook_url == "https://example.com/hook"
+
+
+@respx.mock
+def test_register_app_returns_app_info():
+    captured: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={
+            "app_id": "new-app", "webhook_url": "", "auto_accept": "manual",
+        })
+
+    respx.post(f"{BASE}/api/v1/apps/register").mock(side_effect=capture)
+    req = RegisterAppRequest(app_id="new-app", auto_accept=AutoAcceptMode.AUTO_ALL)
+    with make_client(api_key="secret") as client:
+        app = client.register_app(req)
+
+    assert app.app_id == "new-app"
+    assert captured["body"]["app_id"] == "new-app"
+    assert captured["body"]["auto_accept"] == "auto_all"
+
+
+@respx.mock
+def test_delete_app_succeeds():
+    respx.delete(f"{BASE}/api/v1/apps/my-app").mock(
+        return_value=httpx.Response(204)
+    )
+    with make_client(api_key="secret") as client:
+        client.delete_app("my-app")  # must not raise
+
+
+@respx.mock
+def test_delete_app_raises_on_not_found():
+    respx.delete(f"{BASE}/api/v1/apps/missing").mock(
+        return_value=httpx.Response(404, text="app not found")
+    )
+    with make_client(api_key="secret") as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            client.delete_app("missing")

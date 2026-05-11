@@ -278,6 +278,160 @@ public sealed class MrmiClientTests
         var values = Enum.GetValues<AutoAcceptMode>();
         Assert.Equal(4, values.Length);
     }
+
+    // ── JWT auth header (v0.3) ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task JwtToken_SentAsBearerAuthorizationHeader()
+    {
+        string? capturedAuth = null;
+        var handler = new HeaderCapturingHandler(
+            h => capturedAuth = h.Authorization?.ToString(),
+            HttpStatusCode.OK,
+            """{"node_id":"","region":"","node_scope":"","profile":"","applicable_law":"","app_version":"","adr_version":"","uptime_seconds":0}""",
+            "application/json");
+
+        using var client = new MrmiClient(new MrmiClientOptions
+        {
+            BaseUrl = "http://localhost:8080",
+            JwtToken = "my.jwt.token",
+            HttpClient = new HttpClient(handler),
+        });
+        await client.GetStatusAsync();
+
+        Assert.Equal("Bearer my.jwt.token", capturedAuth);
+    }
+
+    [Fact]
+    public async Task ApiKey_SentAsXMrmiKeyHeader()
+    {
+        string? capturedKey = null;
+        var handler = new HeaderCapturingHandler(
+            h => capturedKey = h.TryGetValues("X-MRMI-Key", out var vals) ? string.Join(",", vals) : null,
+            HttpStatusCode.OK,
+            """{"node_id":"","region":"","node_scope":"","profile":"","applicable_law":"","app_version":"","adr_version":"","uptime_seconds":0}""",
+            "application/json");
+
+        using var client = new MrmiClient(new MrmiClientOptions
+        {
+            BaseUrl = "http://localhost:8080",
+            ApiKey = "my-api-key",
+            HttpClient = new HttpClient(handler),
+        });
+        await client.GetStatusAsync();
+
+        Assert.Equal("my-api-key", capturedKey);
+    }
+
+    [Fact]
+    public async Task JwtToken_TakesPrecedenceOverApiKey()
+    {
+        string? capturedAuth = null;
+        bool hasApiKey = false;
+        var handler = new HeaderCapturingHandler(
+            h =>
+            {
+                capturedAuth = h.Authorization?.ToString();
+                hasApiKey = h.TryGetValues("X-MRMI-Key", out _);
+            },
+            HttpStatusCode.OK,
+            """{"node_id":"","region":"","node_scope":"","profile":"","applicable_law":"","app_version":"","adr_version":"","uptime_seconds":0}""",
+            "application/json");
+
+        using var client = new MrmiClient(new MrmiClientOptions
+        {
+            BaseUrl = "http://localhost:8080",
+            ApiKey = "k",
+            JwtToken = "my.jwt.token",
+            HttpClient = new HttpClient(handler),
+        });
+        await client.GetStatusAsync();
+
+        Assert.Equal("Bearer my.jwt.token", capturedAuth);
+        Assert.False(hasApiKey);
+    }
+
+    // ── IssueTokenAsync (v0.3) ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task IssueTokenAsync_ReturnsIssuedToken()
+    {
+        var json = """{"token":"signed.jwt.here","scope":"operator","expires_at":9999999}""";
+        var handler = new StubHandler(HttpStatusCode.OK, json, "application/json");
+        using var client = BuildClient(handler);
+
+        var issued = await client.IssueTokenAsync(scope: "operator", ttlMinutes: 30);
+
+        Assert.Equal("signed.jwt.here", issued.Token);
+        Assert.Equal("operator", issued.Scope);
+        Assert.Equal(9999999L, issued.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task IssueTokenAsync_ThrowsWhenJwtNotConfigured()
+    {
+        var handler = new StubHandler(HttpStatusCode.ServiceUnavailable, "JWT not configured", "text/plain");
+        using var client = BuildClient(handler);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.IssueTokenAsync());
+    }
+
+    // ── App management (v0.3) ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ListAppsAsync_ReturnsAppList()
+    {
+        var json = """[{"app_id":"my-app","webhook_url":"https://example.com/hook","auto_accept":"manual"}]""";
+        var handler = new StubHandler(HttpStatusCode.OK, json, "application/json");
+        using var client = BuildClient(handler);
+
+        var apps = await client.ListAppsAsync();
+
+        Assert.Single(apps);
+        Assert.Equal("my-app", apps[0].AppId);
+        Assert.Equal("https://example.com/hook", apps[0].WebhookUrl);
+    }
+
+    [Fact]
+    public async Task RegisterAppAsync_ReturnsAppInfo()
+    {
+        string? capturedBody = null;
+        var responseJson = """{"app_id":"new-app","webhook_url":"","auto_accept":"auto_all"}""";
+        var handler = new CapturingHandler(
+            b => capturedBody = b,
+            HttpStatusCode.OK,
+            responseJson,
+            "application/json");
+
+        using var client = BuildClient(handler);
+        var app = await client.RegisterAppAsync(new RegisterAppRequest
+        {
+            AppId = "new-app",
+            AutoAccept = "auto_all",
+        });
+
+        Assert.Equal("new-app", app.AppId);
+        Assert.Contains("new-app", capturedBody);
+        Assert.Contains("auto_all", capturedBody);
+    }
+
+    [Fact]
+    public async Task DeleteAppAsync_DoesNotThrowOnSuccess()
+    {
+        var handler = new StubHandler(HttpStatusCode.NoContent, "", "text/plain");
+        using var client = BuildClient(handler);
+
+        await client.DeleteAppAsync("my-app"); // must not throw
+    }
+
+    [Fact]
+    public async Task DeleteAppAsync_ThrowsOnNotFound()
+    {
+        var handler = new StubHandler(HttpStatusCode.NotFound, "app not found", "text/plain");
+        using var client = BuildClient(handler);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.DeleteAppAsync("missing"));
+    }
 }
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
@@ -317,5 +471,23 @@ internal sealed class CapturingHandler(
         {
             Content = new StringContent(body, Encoding.UTF8, contentType),
         };
+    }
+}
+
+internal sealed class HeaderCapturingHandler(
+    Action<System.Net.Http.Headers.HttpRequestHeaders> capture,
+    HttpStatusCode status,
+    string body,
+    string contentType)
+    : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        capture(request.Headers);
+        return Task.FromResult(new HttpResponseMessage(status)
+        {
+            Content = new StringContent(body, Encoding.UTF8, contentType),
+        });
     }
 }

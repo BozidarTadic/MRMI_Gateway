@@ -82,6 +82,7 @@ type ProfileConfig struct {
 	TimingJitterMax  time.Duration
 	PaddingBucket    int
 	DummyTrafficRate time.Duration
+	TransitCacheTTL  time.Duration // 0 disables transit cache; capped at 60 s by the transit package
 }
 
 type PolicyConfig struct {
@@ -280,6 +281,7 @@ type rawTOML struct {
 		TimingJitterMaxMs          int `toml:"timing_jitter_max_ms"`
 		DedupTTLH                  int `toml:"dedup_ttl_h"`
 		DummyTrafficIntervalSecond int `toml:"dummy_traffic_interval_s"`
+		TransitCacheTTLS           int `toml:"transit_cache_ttl_s"`
 	} `toml:"profile_override"`
 
 	Policy struct {
@@ -417,6 +419,9 @@ func (r rawTOML) apply(cfg *Config) {
 	}
 	if r.ProfileOverride.DummyTrafficIntervalSecond > 0 {
 		cfg.Profile.DummyTrafficRate = time.Duration(r.ProfileOverride.DummyTrafficIntervalSecond) * time.Second
+	}
+	if r.ProfileOverride.TransitCacheTTLS > 0 {
+		cfg.Profile.TransitCacheTTL = time.Duration(r.ProfileOverride.TransitCacheTTLS) * time.Second
 	}
 
 	if r.Policy.Outbound.AllowTo != nil {

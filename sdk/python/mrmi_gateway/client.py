@@ -10,6 +10,7 @@ from typing import Callable, Optional
 import httpx
 
 from .models import (
+    AppInfo,
     AuditEntry,
     AutoAcceptMode,
     ConnectResult,
@@ -17,8 +18,10 @@ from .models import (
     DiscoveryQueryType,
     DiscoveryResult,
     DlqEntry,
+    IssuedToken,
     NodeStatusResponse,
     ReceivedEnvelope,
+    RegisterAppRequest,
     ReplayResult,
     SendEnvelopeRequest,
     SendEnvelopeResponse,
@@ -29,6 +32,7 @@ from .models import (
 class MrmiClientOptions:
     base_url: str
     api_key: Optional[str] = None
+    jwt_token: Optional[str] = None  # Bearer JWT; takes precedence over api_key
     timeout: float = 10.0
 
 
@@ -38,8 +42,10 @@ class MrmiClient:
     def __init__(self, options: MrmiClientOptions) -> None:
         self._base = options.base_url.rstrip("/")
         self._timeout = options.timeout
-        headers = {}
-        if options.api_key:
+        headers: dict[str, str] = {}
+        if options.jwt_token:
+            headers["Authorization"] = f"Bearer {options.jwt_token}"
+        elif options.api_key:
             headers["X-MRMI-Key"] = options.api_key
         self._http = httpx.Client(headers=headers, timeout=options.timeout)
 
@@ -168,6 +174,44 @@ class MrmiClient:
         )
         resp.raise_for_status()
         return ConnectResult.from_dict(resp.json())
+
+    # ── JWT token issuance (v0.3) ──────────────────────────────────────────────
+
+    def issue_token(self, scope: str = "read", ttl_minutes: int = 60) -> IssuedToken:
+        """
+        Issue a short-lived JWT bearer token.  Requires operator API key auth.
+
+        :param scope: ``"read"`` or ``"operator"``.
+        :param ttl_minutes: Token validity in minutes (1–1440; default 60).
+        """
+        resp = self._http.post(
+            f"{self._base}/api/v1/token",
+            json={"scope": scope, "ttl_minutes": ttl_minutes},
+        )
+        resp.raise_for_status()
+        return IssuedToken.from_dict(resp.json())
+
+    # ── App management (v0.3) ──────────────────────────────────────────────────
+
+    def list_apps(self) -> list[AppInfo]:
+        """Return all apps registered on this node."""
+        resp = self._http.get(f"{self._base}/api/v1/apps")
+        resp.raise_for_status()
+        return [AppInfo.from_dict(a) for a in resp.json()]
+
+    def register_app(self, request: RegisterAppRequest) -> AppInfo:
+        """Register a new application.  Requires operator scope."""
+        resp = self._http.post(
+            f"{self._base}/api/v1/apps/register",
+            json=request.to_dict(),
+        )
+        resp.raise_for_status()
+        return AppInfo.from_dict(resp.json())
+
+    def delete_app(self, app_id: str) -> None:
+        """Delete a registered application.  Requires operator scope."""
+        resp = self._http.delete(f"{self._base}/api/v1/apps/{app_id}")
+        resp.raise_for_status()
 
     def close(self) -> None:
         self._http.close()

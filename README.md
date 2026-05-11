@@ -49,7 +49,7 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.3 (Sprint 8 complete)
+## Current Status — v0.4 (Sprint 9 complete)
 
 **Sprint 1 + 2 — complete**
 
@@ -120,8 +120,19 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 - [x] Embedded dashboard SPA — vanilla JS, dark theme, 5 pages: Status, Audit Log, DLQ, Settings, Apps (`web/`)
 - [x] Sprint 8 integration tests — 14 new acceptance tests covering apps, dashboard, JWT, gossip, config PUT
 
+**Sprint 9 — complete** (v0.4, production hardening)
+
+- [x] Transit cache — in-memory LRU+TTL buffer (≤60 s, ≤1000 entries) before DLQ promotion (`internal/transit/`)
+- [x] Discovery rate limiter — per-origin-node token bucket (10 req/s, burst 20) on `BroadcastDiscovery` RPC (`internal/ratelimit/`)
+- [x] Alliance and global node operator guide — `docs/ALLIANCE_NODE_GUIDE.md`; example configs `configs/node.alliance.eaeu.toml`, `configs/node.global.relay.toml`
+- [x] `POST /api/v1/token` — API-key-authenticated JWT issuance endpoint; scope `read`/`operator`, configurable TTL
+- [x] Python SDK v0.3 — `jwt_token` option, `issue_token()`, `list_apps()`, `register_app()`, `delete_app()` (`sdk/python/`)
+- [x] .NET SDK v0.3 — `JwtToken`/`ApiKey` options, `IssueTokenAsync()`, `ListAppsAsync()`, `RegisterAppAsync()`, `DeleteAppAsync()` (`sdk/dotnet/`)
+- [x] Sprint 9 acceptance tests — 11 new tests: transit cache drain, rate limiter, JWT issuance flow, JWT→apps auth
+
 **Future**
 
+- [ ] DHT-based peer discovery (v1.0)
 - [ ] CLI reference client (open for contributors)
 - [ ] Java SDK (open for contributors)
 

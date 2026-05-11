@@ -62,6 +62,7 @@ func DefaultConfigForProfile(name string) Config {
 			TimingJitterMax:  500 * time.Millisecond,
 			PaddingBucket:    16 * 1024,
 			DummyTrafficRate: 5 * time.Second,
+			TransitCacheTTL:  30 * time.Second,
 		}
 		cfg.Policy.Audit.DNSTXTInterval = time.Hour
 	case "performance":
@@ -71,6 +72,7 @@ func DefaultConfigForProfile(name string) Config {
 			TimingJitterMax:  0,
 			PaddingBucket:    0,
 			DummyTrafficRate: 0,
+			TransitCacheTTL:  0, // disabled on performance profile
 		}
 		cfg.Policy.Audit.LogAllDecisions = false
 		cfg.Policy.Audit.ExportToOperator = false
@@ -85,6 +87,7 @@ func DefaultConfigForProfile(name string) Config {
 			TimingJitterMax:  100 * time.Millisecond,
 			PaddingBucket:    4 * 1024,
 			DummyTrafficRate: 60 * time.Second,
+			TransitCacheTTL:  30 * time.Second,
 		}
 	}
 
