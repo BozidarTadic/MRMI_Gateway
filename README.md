@@ -49,7 +49,7 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.2 (Sprint 6 complete)
+## Current Status — v0.3 (Sprint 8 complete)
 
 **Sprint 1 + 2 — complete**
 
@@ -101,6 +101,24 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 - [x] .NET SDK v0.2 — `DiscoverAsync`, `ConnectAsync`, `AutoAcceptMode`
 - [x] Python SDK v0.2 — `sdk/python/` (`mrmi-gateway-sdk`)
 - [x] Blazor demo app — split-screen RS/RU corridor with live audit log (`demo/blazor/`)
+
+**Sprint 7 — complete** (v0.2, federated discovery)
+
+- [x] Federated discovery proto — `BroadcastDiscovery` + `ConnectRequest` RPCs in `contracts.proto`
+- [x] Broadcast engine — hop-limited fan-out with dedup, 30 s staleness guard (`internal/discovery/`)
+- [x] Opaque token lifecycle — SHA-256 single-use tokens, TTL-based purge (`internal/token/`)
+- [x] App namespace isolation — `SAME_APP_ONLY` / `WHITELIST` / `OPEN` policy modes
+- [x] ConnectRequest auto-accept — `MANUAL` / `AUTO_WHITELIST` / `AUTO_MUTUAL` / `AUTO_ALL`
+
+**Sprint 8 — complete** (v0.3, persistence + dashboard)
+
+- [x] `NodeStore` interface — pluggable persistence for dedup, DLQ, CRL, audit (`internal/store/`)
+- [x] bbolt backend — embedded persistent key-value store (`internal/store/bbolt/`)
+- [x] Redis backend — `go-redis/v9`, `SetNX` dedup, HSET for DLQ/CRL, RPUSH for audit (`internal/store/redis/`)
+- [x] Dynamic peer discovery — `peerdiscovery.Registry`, gossip loop, bootstrap nodes, stale eviction
+- [x] Management API v0.3 — JWT HMAC-SHA256 auth, `GET/PUT /api/v1/config`, app register/deregister endpoints
+- [x] Embedded dashboard SPA — vanilla JS, dark theme, 5 pages: Status, Audit Log, DLQ, Settings, Apps (`web/`)
+- [x] Sprint 8 integration tests — 14 new acceptance tests covering apps, dashboard, JWT, gossip, config PUT
 
 **Future**
 

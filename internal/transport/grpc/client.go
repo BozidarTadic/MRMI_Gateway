@@ -83,6 +83,14 @@ func (c *Client) Connect(ctx context.Context, request *ConnectRequest) (*Connect
 	return response, nil
 }
 
+func (c *Client) ExchangePeers(ctx context.Context, request *PeerListRequest) (*PeerListResponse, error) {
+	response := new(PeerListResponse)
+	if err := c.conn.Invoke(ctx, "/mrmi.v1.GatewayService/ExchangePeers", request, response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
 // AsDiscoveryClient wraps this Client so it satisfies discovery.PeerClient,
 // converting between grpc transport types and discovery domain types.
 func (c *Client) AsDiscoveryClient() discovery.PeerClient {

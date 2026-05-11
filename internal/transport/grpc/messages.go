@@ -82,3 +82,20 @@ type ConnectAck struct {
 	ExpiresAt int64  `json:"expires_at,omitempty"`
 	Reason    string `json:"reason,omitempty"`
 }
+
+type PeerEntry struct {
+	NodeID    string `json:"node_id"`
+	Addr      string `json:"addr"`
+	NodeScope string `json:"node_scope"`
+	Region    string `json:"region"`
+	LastSeen  int64  `json:"last_seen"` // unix seconds
+}
+
+type PeerListRequest struct {
+	SenderNodeID string      `json:"sender_node_id"`
+	KnownPeers   []PeerEntry `json:"known_peers"`
+}
+
+type PeerListResponse struct {
+	Peers []PeerEntry `json:"peers"`
+}

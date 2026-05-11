@@ -1,0 +1,38 @@
+[node]
+node_id         = "ru-node-01"
+node_scope      = "regional"
+region          = "RU"
+operator_id     = "example-operator"
+policy_version  = "0.1.0"
+applicable_law  = "RU-PDL"
+signed_by       = "ed25519:REPLACE_ME"
+
+[profile]
+name            = "balanced"
+
+[policy.outbound]
+allow_to        = ["RS", "BY", "KZ", "AM"]
+deny_to         = []
+store_locally   = true
+
+[policy.inbound]
+min_trust_tier  = 0
+
+[policy.audit]
+log_all_decisions   = true
+log_backend         = "local-merkle"
+export_to_operator  = false
+dns_txt_publish     = false
+
+[network]
+listen_addr         = "0.0.0.0:7788"
+grpc_port           = 7788
+http_port           = 8083
+metrics_port        = 9093
+
+[tls]
+insecure = true
+
+[peers.RS]
+addr       = "localhost:7787"
+node_scope = "regional"

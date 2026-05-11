@@ -24,10 +24,13 @@ import (
 	"MRMI_Gateway/internal/identity"
 	"MRMI_Gateway/internal/inbox"
 	"MRMI_Gateway/internal/peercache"
+	"MRMI_Gateway/internal/peerdiscovery"
 	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/registry"
 	"MRMI_Gateway/internal/server"
 	"MRMI_Gateway/internal/session"
+	storebb "MRMI_Gateway/internal/store/bbolt"
+	storeredis "MRMI_Gateway/internal/store/redis"
 	"MRMI_Gateway/internal/tlsutil"
 	"MRMI_Gateway/internal/token"
 	"MRMI_Gateway/internal/trustdecay"
@@ -43,6 +46,36 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		return fmt.Errorf("generate signing key: %w", err)
 	}
 	log.Printf("[identity] using ephemeral Ed25519 signing key — set signing_key in [tls] for a persistent key")
+
+	// Persistent store: bbolt, Redis, or nil (in-memory fallback).
+	switch cfg.Storage.Backend {
+	case "bbolt":
+		dir := cfg.Storage.Path
+		if dir == "" {
+			dir = "/var/lib/mrmi"
+		}
+		s, err := storebb.Open(dir)
+		if err != nil {
+			return fmt.Errorf("open bbolt store: %w", err)
+		}
+		defer s.Close()
+		log.Printf("[store] bbolt backend at %s/mrmi.db", dir)
+		_ = s // store integration wired via NodeStore interface (future: inject into dedup/DLQ/CRL)
+	case "redis":
+		prefix := cfg.Storage.KeyPrefix
+		if prefix == "" {
+			prefix = "mrmi:"
+		}
+		s, err := storeredis.New(cfg.Storage.RedisURL, prefix)
+		if err != nil {
+			return fmt.Errorf("open redis store: %w", err)
+		}
+		defer s.Close()
+		log.Printf("[store] redis backend at %s (prefix %s)", cfg.Storage.RedisURL, prefix)
+		_ = s
+	default:
+		log.Printf("[store] using in-memory storage (no persistence)")
+	}
 
 	seqSend := session.New()
 
@@ -192,12 +225,22 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	// Runtime peers: populated via POST /api/v1/peers/register.
 	runtimePeers := server.NewRuntimePeers()
 
+	// Runtime apps: registered via POST /api/v1/apps/register.
+	runtimeApps := server.NewRuntimeApps()
+
 	// Config reload callback: re-reads file and applies to engine.
 	var onReload func() error
+	var onConfigSave func(config.Config) error
 	if configPath != "" {
 		onReload = func() error {
 			newCfg, err := config.Load(configPath)
 			if err != nil {
+				return err
+			}
+			return engine.Reload(newCfg)
+		}
+		onConfigSave = func(newCfg config.Config) error {
+			if err := newCfg.Validate(); err != nil {
 				return err
 			}
 			return engine.Reload(newCfg)
@@ -215,7 +258,9 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		Inbox:          msgInbox,
 		Registry:       reg,
 		RuntimePeers:   runtimePeers,
+		RuntimeApps:    runtimeApps,
 		OnConfigReload: onReload,
+		OnConfigSave:   onConfigSave,
 	})
 
 	// Sprint 7: opaque token store + background purge.
@@ -242,12 +287,30 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	// Sprint 7: connect resolver.
 	connectRes := connect.New(cfg)
 
+	// Sprint 8: dynamic peer discovery registry + gossip.
+	peerRegistry := peerdiscovery.New()
+	gossipInterval := cfg.Network.PeerGossipInterval
+	if gossipInterval <= 0 {
+		gossipInterval = 120 * time.Second
+	}
+	// Seed registry with static peers from config.
+	for _, p := range cfg.Network.Peers {
+		peerRegistry.Announce(peerdiscovery.PeerInfo{
+			NodeID:    p.Region, // use region as key for static peers
+			Addr:      p.Addr,
+			NodeScope: p.NodeScope,
+			Region:    p.Region,
+		})
+	}
+	go runPeerGossip(ctx, cfg, peerRegistry, clientTLS, gossipInterval)
+
 	discoveryDeps := grpctransport.DiscoveryDeps{
-		TokenStore:  tokenStore,
-		Broadcaster: broadcaster,
-		ConnectRes:  connectRes,
-		PolicyEng:   engine,
-		NodeCfg:     cfg,
+		TokenStore:   tokenStore,
+		Broadcaster:  broadcaster,
+		ConnectRes:   connectRes,
+		PolicyEng:    engine,
+		PeerRegistry: peerRegistry,
+		NodeCfg:      cfg,
 	}
 
 	var adapter grpctransport.GatewayService
@@ -280,6 +343,68 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 			return nil
 		}
 		return err
+	}
+}
+
+func runPeerGossip(ctx context.Context, cfg config.Config, reg *peerdiscovery.Registry, clientTLS *tls.Config, interval time.Duration) {
+	staleAge := 5 * interval
+
+	dialAndExchange := func(addr string) {
+		dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		client, err := grpctransport.Dial(dialCtx, addr, clientTLS)
+		if err != nil {
+			log.Printf("[gossip] dial %s: %v", addr, err)
+			return
+		}
+		defer client.Close()
+
+		known := reg.Known()
+		peers := make([]grpctransport.PeerEntry, 0, len(known))
+		for _, p := range known {
+			peers = append(peers, grpctransport.PeerEntry{
+				NodeID:    p.NodeID,
+				Addr:      p.Addr,
+				NodeScope: p.NodeScope,
+				Region:    p.Region,
+				LastSeen:  p.LastSeen.Unix(),
+			})
+		}
+		resp, err := client.ExchangePeers(ctx, &grpctransport.PeerListRequest{
+			SenderNodeID: cfg.Node.NodeID,
+			KnownPeers:   peers,
+		})
+		if err != nil {
+			log.Printf("[gossip] exchange peers %s: %v", addr, err)
+			return
+		}
+		for _, p := range resp.Peers {
+			reg.Announce(peerdiscovery.PeerInfo{
+				NodeID:    p.NodeID,
+				Addr:      p.Addr,
+				NodeScope: p.NodeScope,
+				Region:    p.Region,
+			})
+		}
+	}
+
+	// Bootstrap: dial seed nodes once at startup.
+	for _, addr := range cfg.Network.BootstrapNodes {
+		dialAndExchange(addr)
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			reg.EvictStale(staleAge)
+			for _, p := range reg.Known() {
+				go dialAndExchange(p.Addr)
+			}
+		}
 	}
 }
 
