@@ -89,7 +89,10 @@ func (e *Engine) Evaluate(req Request) Result {
 		return result
 	}
 
-	if len(cfg.Policy.Outbound.AllowTo) > 0 && !slices.Contains(cfg.Policy.Outbound.AllowTo, req.RecipientRegion) {
+	// allow_to is an outbound routing constraint; skip it when the envelope is
+	// already at its final destination (recipient == this node's region).
+	isLocalDestination := cfg.Node.Region != "" && req.RecipientRegion == cfg.Node.Region
+	if !isLocalDestination && len(cfg.Policy.Outbound.AllowTo) > 0 && !slices.Contains(cfg.Policy.Outbound.AllowTo, req.RecipientRegion) {
 		result := Result{
 			Decision: DecisionDeny,
 			Reason:   "RECIPIENT_REGION_NOT_IN_ALLOW_LIST",
