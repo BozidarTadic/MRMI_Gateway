@@ -197,7 +197,7 @@ allow_via = ["regional", "alliance"]
 
 Both alliance and global nodes benefit from the transit cache (enabled by default on `balanced` and `strict` profiles).  
 When a peer is temporarily unreachable, envelopes are held in memory for up to 60 s before DLQ promotion.  
-On global nodes running `performance` profile the transit cache is disabled (`transit_cache_ttl = 0`).
+On global nodes running `performance` profile the transit cache is disabled (`transit_cache_ttl_s = 0`).
 
 To enable it explicitly on `performance`-profile global nodes:
 

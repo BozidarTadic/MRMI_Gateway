@@ -107,28 +107,28 @@ func TestTransitCache_BuffersFailedForwards(t *testing.T) {
 		"RU": {Addr: "localhost:1", NodeScope: "regional"},
 	}
 
-	_, _, tc := startNodeV4(t, cfg)
-
-	// Send an envelope destined for RU (the only peer, which is unreachable).
-	req := &grpctransport.SendEnvelopeRequest{
-		Envelope: grpctransport.Envelope{
-			IdempotencyKey:  "transit-001",
-			SenderRegion:    "RS",
-			RecipientRegion: "RU",
-		},
-	}
-
-	// Start the gRPC client via HTTP path is fine; let's use gRPC directly.
-	// We need the gRPC addr — reuse the same approach but with a proper test helper.
-	// For this test we verify the transit cache is populated after a gRPC send.
-	// The node was started above; use the DLQ as fallback.
+	base, _, tc := startNodeV4(t, cfg)
 	if tc == nil {
-		t.Skip("transit cache disabled in this config")
+		t.Fatal("transit cache must be non-nil when TransitCacheTTL > 0")
 	}
 
-	// The forward will fail (peer unreachable). Transit cache should buffer it.
-	// Wait briefly for the async forward to complete.
-	_ = req
+	// Send an envelope destined for RU. The forwarder uses alwaysFail, so the
+	// forward attempt fails synchronously and the envelope is buffered in the
+	// transit cache instead of going to the DLQ immediately.
+	resp := authReq(t, http.MethodPost, base+"/api/v1/envelopes",
+		map[string]any{
+			"idempotency_key":  "transit-001",
+			"sender_region":    "RS",
+			"recipient_region": "RU",
+		}, "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("send: expected 200, got %d", resp.StatusCode)
+	}
+
+	if got := tc.Len(); got != 1 {
+		t.Fatalf("expected 1 entry in transit cache after failed forward, got %d", got)
+	}
 }
 
 func TestTransitCache_DrainsToDLQAfterExpiry(t *testing.T) {
@@ -245,7 +245,7 @@ func TestJWT_IssueToken_ReturnsSignedJWT(t *testing.T) {
 		t.Fatal("expected non-empty JWT token")
 	}
 	if !strings.HasPrefix(body.Token, "ey") {
-		t.Fatalf("expected JWT (starts with ey), got %q", body.Token[:min(len(body.Token), 10)])
+		t.Fatalf("expected JWT (starts with ey), got %q", body.Token)
 	}
 	if body.Scope != "operator" {
 		t.Fatalf("expected scope=operator, got %q", body.Scope)
@@ -316,9 +316,3 @@ func TestJWT_IssueToken_503WhenJWTSecretMissing(t *testing.T) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
