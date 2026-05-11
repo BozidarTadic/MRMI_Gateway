@@ -272,6 +272,140 @@ To observe dummy traffic in the two-node setup:
 curl http://localhost:8081/.well-known/mrmi-audit   # root_hash advances as dummy envelopes arrive
 ```
 
+## Sprint 6 features
+
+### Management API authentication
+
+All write endpoints require the `X-MRMI-Key` header when `api_key` is set in the config:
+
+```toml
+[api]
+api_key = "my-secret-key"
+```
+
+Read-only endpoints (`/api/v1/status`, `/api/v1/audit/latest`, `/api/v1/dlq`, etc.) are public. Write endpoints (`/api/v1/peers/register`, `/api/v1/dlq/{index}/replay`, `/api/v1/crl`, `/api/v1/config/reload`, `/api/v1/revoke/{node_id}`) require the header.
+
+```bash
+# Authorized write
+curl -X POST http://localhost:8080/api/v1/config/reload \
+  -H "X-MRMI-Key: my-secret-key"
+
+# Unauthorized → 401
+curl -X POST http://localhost:8080/api/v1/config/reload
+```
+
+### Webhook notifications
+
+Configure a webhook endpoint per app in the TOML config. The gateway fires a signed HTTP POST on every ALLOW decision:
+
+```toml
+[apps.my-app]
+webhook_url     = "https://myapp.example.com/mrmi-events"
+webhook_secret  = "hmac-secret-for-signature-verification"
+webhook_timeout = 5  # seconds, default 5
+auto_accept     = "manual"  # manual | auto_whitelist | auto_mutual | auto_all
+
+  [apps.my-app.users]
+  [apps.my-app.users.user-marko]
+  display_hint = "Marko Petrović"
+  region = "RS"
+```
+
+The payload sent to the webhook:
+
+```json
+{
+  "node_id": "rs-node-01",
+  "app_id": "my-app",
+  "idempotency_key": "env-001",
+  "sender_region": "RS",
+  "recipient_region": "RU",
+  "timestamp": 1746700000
+}
+```
+
+The `X-MRMI-Signature` request header contains an HMAC-SHA256 hex digest of the raw body, keyed with `webhook_secret`. Verify with:
+
+```python
+import hmac, hashlib
+expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+assert header == f"sha256={expected}"
+```
+
+Webhook deliveries are best-effort (fire-and-forget goroutine); one retry on 5xx. Failures do not affect the gateway decision.
+
+### User discovery
+
+Register users via the config (see above). Discover them via the management API:
+
+```bash
+# Search by display name fragment
+curl "http://localhost:8080/api/v1/discover?q=Marko&type=display_hint"
+
+# Search by exact app ID
+curl "http://localhost:8080/api/v1/discover?q=my-app&type=app_id"
+```
+
+Each result includes an `opaque_token` (UUID, 5-minute TTL, single-use) for initiating a connect request.
+
+### Connect requests
+
+```bash
+curl -X POST http://localhost:8080/api/v1/connect \
+  -H "Content-Type: application/json" \
+  -d '{"opaque_token":"<token>","requester_id":"ru-user","requester_region":"RU"}'
+```
+
+Response statuses: `ACCEPTED` or `PENDING` — determined by the target app's `auto_accept` mode:
+
+| Mode | Behaviour |
+|---|---|
+| `manual` | Always `PENDING` |
+| `auto_whitelist` | `ACCEPTED` if requester is a registered user |
+| `auto_mutual` | `ACCEPTED` if requester's region is in `allow_to` |
+| `auto_all` | Always `ACCEPTED` |
+
+### Runtime peer registration
+
+Add a peer without restarting the node:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/peers/register \
+  -H "X-MRMI-Key: my-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"addr":"localhost:7779","region":"BY","node_scope":"regional"}'
+```
+
+List all peers (config + runtime):
+
+```bash
+curl http://localhost:8080/api/v1/peers
+# → [{"addr":"localhost:7778","region":"RU","source":"config"}, ...]
+```
+
+### Config hot reload
+
+Reload the TOML file without restarting the process:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/config/reload \
+  -H "X-MRMI-Key: my-secret-key"
+```
+
+The node re-reads the file from the path that was passed at startup via `-config`. If the node was started without `-config`, the endpoint returns `503 Service Unavailable`.
+
+### Blazor demo app
+
+A split-screen demo Blazor app is available at `demo/blazor/`. It shows a Serbian sender (Marko Petrović) and a Russian receiver (Иван Иванов) with a live corridor log at the bottom. Start both gateway nodes first, then:
+
+```bash
+cd demo/blazor/MRMI.Demo.Blazor
+dotnet run
+# → https://localhost:5001
+```
+
+Configure node URLs in `appsettings.json` (defaults: RS `:8080`, RU `:8081`).
+
 ## Run the full test suite
 
 ```bash

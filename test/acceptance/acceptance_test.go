@@ -128,6 +128,12 @@ func decodeJSON(t *testing.T, r io.Reader, v any) {
 	}
 }
 
+func jsonBody(t *testing.T, v any) *bytes.Reader {
+	t.Helper()
+	b, _ := json.Marshal(v)
+	return bytes.NewReader(b)
+}
+
 // TestHealthz confirms the legacy health endpoint is still served.
 func TestHealthz(t *testing.T) {
 	base, _, _, _, _, _ := startNode(t)

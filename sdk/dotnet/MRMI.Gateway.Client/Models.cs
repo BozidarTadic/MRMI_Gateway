@@ -209,3 +209,55 @@ public sealed class CrlEntry
     [JsonPropertyName("revoked_at_unix")]
     public long RevokedAtUnix { get; init; }
 }
+
+// ── Discovery / Connect (v0.2) ────────────────────────────────────────────────
+
+/// <summary>A user returned by a discovery query.</summary>
+public sealed class DiscoveryResult
+{
+    [JsonPropertyName("node_id")]
+    public string NodeId { get; init; } = "";
+
+    [JsonPropertyName("app_id")]
+    public string AppId { get; init; } = "";
+
+    [JsonPropertyName("user_id")]
+    public string UserId { get; init; } = "";
+
+    [JsonPropertyName("display_hint")]
+    public string DisplayHint { get; init; } = "";
+
+    [JsonPropertyName("region")]
+    public string Region { get; init; } = "";
+
+    /// <summary>Short-lived token to use in <see cref="MrmiClient.ConnectAsync"/>.</summary>
+    [JsonPropertyName("opaque_token")]
+    public string OpaqueToken { get; init; } = "";
+
+    [JsonPropertyName("token_expires")]
+    public long TokenExpires { get; init; }
+}
+
+/// <summary>Result of a <see cref="MrmiClient.ConnectAsync"/> call.</summary>
+public sealed class ConnectResult
+{
+    /// <summary>ACCEPTED, PENDING, or DENIED.</summary>
+    [JsonPropertyName("status")]
+    public string Status { get; init; } = "";
+
+    [JsonPropertyName("session_id")]
+    public string? SessionId { get; init; }
+
+    [JsonPropertyName("expires_at")]
+    public long ExpiresAt { get; init; }
+
+    [JsonIgnore]
+    public bool IsAccepted => Status == "ACCEPTED";
+}
+
+/// <summary>Options for a connect request.</summary>
+public sealed record ConnectOptions
+{
+    /// <summary>How the target node should auto-accept the request.</summary>
+    public AutoAcceptMode AutoAccept { get; init; } = AutoAcceptMode.Manual;
+}

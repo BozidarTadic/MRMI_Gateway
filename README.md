@@ -49,7 +49,7 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.1 (Sprint 5 complete)
+## Current Status — v0.2 (Sprint 6 complete)
 
 **Sprint 1 + 2 — complete**
 
@@ -92,6 +92,15 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 - [x] .NET SDK `MrmiClient` — `Send`, `Receive`, DLQ/CRL management (`sdk/dotnet/MRMI.Gateway.Client/`)
 - [x] Acceptance test suite (`test/acceptance/`) — 12 tests covering all REST endpoints + SSE stream
 - [x] Seed Node Deployment Guide (`docs/SEED_NODE_GUIDE.md`)
+
+**Sprint 6 — complete**
+
+- [x] Push notification webhook — `internal/webhook/`, HMAC-SHA256, best-effort delivery
+- [x] Management API write endpoints — peer register, discard/replay DLQ, config reload, revoke; API key auth
+- [x] User discovery + connect protocol — `internal/registry/`, opaque tokens, auto-accept modes
+- [x] .NET SDK v0.2 — `DiscoverAsync`, `ConnectAsync`, `AutoAcceptMode`
+- [x] Python SDK v0.2 — `sdk/python/` (`mrmi-gateway-sdk`)
+- [x] Blazor demo app — split-screen RS/RU corridor with live audit log (`demo/blazor/`)
 
 **Future**
 
@@ -155,6 +164,8 @@ internal/
   identity/         — Ed25519 key generation, envelope sign/verify
   inbox/            — fan-out broadcaster for SSE stream subscribers
   integration/      — multi-node end-to-end tests
+  registry/         — user discovery, opaque tokens, connect/auto-accept
+  webhook/          — HMAC-SHA256 push notifications to app webhooks
   policy/           — policy engine (region allow/deny, trust tier, CRL)
   server/           — HTTP endpoints (healthz, readyz, management API, SSE)
   session/          — per-sender sequence number tracker
@@ -168,6 +179,8 @@ internal/
 proto/mrmi/v1/      — protobuf contracts
 configs/            — operator TOML configs
 sdk/dotnet/         — .NET 10 SDK (MRMI.Gateway.Client NuGet package)
+sdk/python/         — Python SDK (mrmi-gateway-sdk, PyPI)
+demo/blazor/        — Blazor Server demo: split-screen RS/RU corridor
 test/acceptance/    — end-to-end REST API acceptance tests
 docs/               — ADR, sprint plans, operator guides
 ```

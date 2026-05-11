@@ -1,0 +1,167 @@
+@page "/"
+@using MRMI.Gateway.Client
+@inject DemoState State
+@implements IDisposable
+
+<PageTitle>MRMI Gateway Demo</PageTitle>
+
+<div class="demo-layout">
+
+    <!-- ── Top: split screen ───────────────────────────────────────────────── -->
+    <div class="split-screen">
+
+        <!-- RS side (sender) -->
+        <div class="panel panel-rs">
+            <h3 class="panel-title">&#127480;&#127479; @DemoState.RsUser <small class="text-muted">(RS node)</small></h3>
+
+            <div class="form-group mb-2">
+                <label>Message to @DemoState.RuUser</label>
+                <textarea class="form-control" rows="3" @bind="_rsMessage" placeholder="Type a message..."></textarea>
+            </div>
+
+            <button class="btn btn-primary btn-sm" @onclick="SendRsToRu" disabled="@_rsSending">
+                @(_rsSending ? "Sending..." : "Send to RU →")
+            </button>
+
+            @if (_rsLastResult is not null)
+            {
+                <div class="mt-2 alert @(_rsLastResult.IsAllowed ? "alert-success" : "alert-danger") py-1 small">
+                    <strong>@_rsLastResult.Decision</strong> — @_rsLastResult.Reason
+                </div>
+            }
+        </div>
+
+        <!-- RU side (receiver) -->
+        <div class="panel panel-ru">
+            <h3 class="panel-title">&#127479;&#127482; @DemoState.RuUser <small class="text-muted">(RU node)</small></h3>
+
+            <div class="mb-2">
+                <button class="btn btn-outline-secondary btn-sm" @onclick="FetchRuAudit">Refresh inbox</button>
+            </div>
+
+            @if (_ruAuditEntries.Count > 0)
+            {
+                <ul class="list-group list-group-flush small">
+                    @foreach (var e in _ruAuditEntries.Take(5))
+                    {
+                        <li class="list-group-item px-0 py-1">
+                            <span class="badge @(e.Decision == "ALLOW" ? "bg-success" : "bg-danger")">@e.Decision</span>
+                            from <strong>@e.SenderRegion</strong>
+                            <span class="text-muted">seq @e.Seq</span>
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <p class="text-muted small">No messages yet.</p>
+            }
+        </div>
+    </div>
+
+    <!-- ── Bottom: corridor log ────────────────────────────────────────────── -->
+    <div class="corridor-log">
+        <div class="d-flex align-items-center mb-1">
+            <h5 class="mb-0 me-auto">Corridor log</h5>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="State.ClearLog">Clear</button>
+        </div>
+
+        <table class="table table-sm table-dark mb-0 small">
+            <thead>
+                <tr>
+                    <th style="width:140px">Time</th>
+                    <th style="width:90px">Direction</th>
+                    <th style="width:80px">Decision</th>
+                    <th>Reason</th>
+                    <th>Idempotency key</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in State.Log)
+                {
+                    <tr class="@(entry.IsAllow ? "" : "table-danger")">
+                        <td>@entry.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
+                        <td>@entry.Direction</td>
+                        <td><span class="badge @(entry.IsAllow ? "bg-success" : "bg-danger")">@entry.Decision</span></td>
+                        <td>@entry.Reason</td>
+                        <td class="text-muted">@entry.IdempotencyKey</td>
+                    </tr>
+                }
+                @if (!State.Log.Any())
+                {
+                    <tr><td colspan="5" class="text-muted text-center">No activity yet — send a message above.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private string _rsMessage = "Hello from Serbia!";
+    private bool _rsSending;
+    private SendEnvelopeResponse? _rsLastResult;
+    private List<AuditEntry> _ruAuditEntries = [];
+    private static int _seqCounter;
+
+    protected override void OnInitialized()
+    {
+        State.OnLogChanged += OnLogUpdated;
+    }
+
+    private void OnLogUpdated() => InvokeAsync(StateHasChanged);
+
+    private async Task SendRsToRu()
+    {
+        _rsSending = true;
+        _rsLastResult = null;
+        var key = $"demo-{Interlocked.Increment(ref _seqCounter):D6}";
+        try
+        {
+            var result = await State.RsClient.SendAsync(new SendEnvelopeRequest
+            {
+                IdempotencyKey = key,
+                SenderRegion = DemoState.RsRegion,
+                RecipientRegion = DemoState.RuRegion,
+                TrustTier = 1,
+                Payload = System.Text.Encoding.UTF8.GetBytes(_rsMessage),
+            });
+            _rsLastResult = result;
+            State.AddLog(new LogEntry(
+                DateTimeOffset.UtcNow,
+                $"{DemoState.RsRegion} → {DemoState.RuRegion}",
+                result.Decision,
+                result.Reason,
+                key));
+        }
+        catch (Exception ex)
+        {
+            State.AddLog(new LogEntry(
+                DateTimeOffset.UtcNow,
+                $"{DemoState.RsRegion} → {DemoState.RuRegion}",
+                "ERROR",
+                ex.Message,
+                key));
+        }
+        finally
+        {
+            _rsSending = false;
+        }
+    }
+
+    private async Task FetchRuAudit()
+    {
+        try
+        {
+            _ruAuditEntries = [.. await State.RuClient.GetAuditLatestAsync(count: 5)];
+        }
+        catch
+        {
+            _ruAuditEntries = [];
+        }
+    }
+
+    public void Dispose()
+    {
+        State.OnLogChanged -= OnLogUpdated;
+    }
+}

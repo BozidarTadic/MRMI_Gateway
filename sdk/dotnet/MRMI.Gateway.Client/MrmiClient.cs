@@ -208,6 +208,53 @@ public sealed class MrmiClient : IDisposable
         response.EnsureSuccessStatusCode();
     }
 
+    // ── Discovery / Connect (v0.2) ────────────────────────────────────────────
+
+    /// <summary>
+    /// Discover users on this gateway node matching <paramref name="query"/>.
+    /// </summary>
+    /// <param name="query">Search term — display name substring or exact app ID.</param>
+    /// <param name="queryType">Determines how <paramref name="query"/> is interpreted.</param>
+    public async Task<IReadOnlyList<DiscoveryResult>> DiscoverAsync(
+        string query,
+        DiscoveryQueryType queryType = DiscoveryQueryType.DisplayHint,
+        CancellationToken cancellationToken = default)
+    {
+        var typeParam = queryType switch
+        {
+            DiscoveryQueryType.AppId => "app_id",
+            _ => "display_hint",
+        };
+        var url = $"{_baseUrl}/api/v1/discover?q={Uri.EscapeDataString(query)}&type={typeParam}";
+        var response = await _http.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<DiscoveryResult>>(_json, cancellationToken)
+               ?? [];
+    }
+
+    /// <summary>
+    /// Send a connect request using the <paramref name="opaqueToken"/> returned by
+    /// <see cref="DiscoverAsync"/>. The token is single-use and expires in 5 minutes.
+    /// </summary>
+    public async Task<ConnectResult> ConnectAsync(
+        string opaqueToken,
+        string requesterId,
+        string requesterRegion,
+        CancellationToken cancellationToken = default)
+    {
+        var body = new
+        {
+            opaque_token = opaqueToken,
+            requester_id = requesterId,
+            requester_region = requesterRegion,
+        };
+        var response = await _http.PostAsJsonAsync(
+            $"{_baseUrl}/api/v1/connect", body, _json, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ConnectResult>(_json, cancellationToken)
+               ?? throw new InvalidOperationException("Empty response.");
+    }
+
     public void Dispose()
     {
         if (_ownsClient) _http.Dispose();

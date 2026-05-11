@@ -17,6 +17,30 @@ type Config struct {
 	Policy  PolicyConfig
 	Network NetworkConfig
 	TLS     TLSConfig
+	API     APIConfig
+	Apps    map[string]AppConfig
+}
+
+// APIConfig controls management API authentication.
+type APIConfig struct {
+	// APIKey is the value callers must supply in X-MRMI-Key.
+	// Empty string disables authentication (development only).
+	APIKey string
+}
+
+// AppConfig describes a registered application (webhook target + user registry).
+type AppConfig struct {
+	WebhookURL      string
+	WebhookSecret   string
+	WebhookTimeout  int // seconds; default 5
+	AutoAccept      string // "manual" | "auto_whitelist" | "auto_mutual" | "auto_all"
+	Users           map[string]UserConfig
+}
+
+// UserConfig describes a user registered with this node.
+type UserConfig struct {
+	DisplayHint string
+	Region      string
 }
 
 // TLSConfig holds paths to certificate material for inter-node mTLS.
@@ -273,6 +297,21 @@ type rawTOML struct {
 		CA       string `toml:"ca"`
 		Insecure bool   `toml:"insecure"`
 	} `toml:"tls"`
+
+	API struct {
+		APIKey string `toml:"api_key"`
+	} `toml:"api"`
+
+	Apps map[string]struct {
+		WebhookURL     string `toml:"webhook_url"`
+		WebhookSecret  string `toml:"webhook_secret"`
+		WebhookTimeout int    `toml:"webhook_timeout_s"`
+		AutoAccept     string `toml:"auto_accept"`
+		Users          map[string]struct {
+			DisplayHint string `toml:"display_hint"`
+			Region      string `toml:"region"`
+		} `toml:"users"`
+	} `toml:"apps"`
 }
 
 func (r rawTOML) profileName() string {
@@ -405,6 +444,38 @@ func (r rawTOML) apply(cfg *Config) {
 				NodeScope: v.NodeScope,
 				Regions:   v.Regions,
 			}
+		}
+	}
+
+	if v := strings.TrimSpace(r.API.APIKey); v != "" {
+		cfg.API.APIKey = v
+	}
+
+	if r.Apps != nil {
+		cfg.Apps = make(map[string]AppConfig, len(r.Apps))
+		for appID, raw := range r.Apps {
+			ac := AppConfig{
+				WebhookURL:     raw.WebhookURL,
+				WebhookSecret:  raw.WebhookSecret,
+				WebhookTimeout: raw.WebhookTimeout,
+				AutoAccept:     raw.AutoAccept,
+			}
+			if ac.WebhookTimeout <= 0 {
+				ac.WebhookTimeout = 5
+			}
+			if ac.AutoAccept == "" {
+				ac.AutoAccept = "manual"
+			}
+			if raw.Users != nil {
+				ac.Users = make(map[string]UserConfig, len(raw.Users))
+				for uid, u := range raw.Users {
+					ac.Users[uid] = UserConfig{
+						DisplayHint: u.DisplayHint,
+						Region:      u.Region,
+					}
+				}
+			}
+			cfg.Apps[appID] = ac
 		}
 	}
 }

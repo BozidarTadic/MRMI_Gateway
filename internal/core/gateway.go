@@ -67,6 +67,12 @@ type NodeInfo struct {
 	Profile       string
 }
 
+// WebhookNotifier is implemented by webhook.Notifier; kept as an interface
+// to avoid a direct import cycle.
+type WebhookNotifier interface {
+	NotifyAll(ctx context.Context, env Envelope)
+}
+
 type Gateway struct {
 	cfg       config.Config
 	policy    *policy.Engine
@@ -74,6 +80,7 @@ type Gateway struct {
 	dedup     *dedup.Index
 	forwarder Forwarder // nil = forwarding disabled
 	onAllow   func(env Envelope)
+	notifier  WebhookNotifier // nil = webhooks disabled
 }
 
 // NewGateway creates a Gateway. Pass nil for forwarder to disable outbound forwarding
@@ -92,6 +99,11 @@ func NewGateway(cfg config.Config, policyEngine *policy.Engine, auditLog *audit.
 // forwarding. Used to publish received envelopes to the inbox for SSE clients.
 func (g *Gateway) SetOnAllow(fn func(env Envelope)) {
 	g.onAllow = fn
+}
+
+// SetNotifier registers the webhook notifier called after each ALLOW decision.
+func (g *Gateway) SetNotifier(n WebhookNotifier) {
+	g.notifier = n
 }
 
 func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendResponse, error) {
@@ -134,6 +146,9 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 	if result.Decision == policy.DecisionAllow {
 		if g.onAllow != nil {
 			g.onAllow(req.Envelope)
+		}
+		if g.notifier != nil {
+			g.notifier.NotifyAll(ctx, req.Envelope)
 		}
 		if g.forwarder != nil {
 			if err := applyJitter(ctx, g.cfg.Profile.TimingJitterMax); err == nil {

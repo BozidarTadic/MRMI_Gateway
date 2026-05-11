@@ -194,6 +194,90 @@ public sealed class MrmiClientTests
         Assert.Contains(MrmiProfile.Balanced, values);
         Assert.Contains(MrmiProfile.Performance, values);
     }
+
+    // ── DiscoverAsync (v0.2) ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DiscoverAsync_ReturnsResults()
+    {
+        var json = """
+            [{"node_id":"rs-01","app_id":"rs-app","user_id":"user-marko","display_hint":"Marko Petrović","region":"RS","opaque_token":"tok-abc","token_expires":9999999}]
+            """;
+        var handler = new StubHandler(HttpStatusCode.OK, json, "application/json");
+        using var client = BuildClient(handler);
+
+        var results = await client.DiscoverAsync("marko");
+
+        Assert.Single(results);
+        Assert.Equal("user-marko", results[0].UserId);
+        Assert.Equal("tok-abc", results[0].OpaqueToken);
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_AppId_UsesCorrectQueryType()
+    {
+        string? capturedUrl = null;
+        var handler = new CapturingHandler(
+            _ => { },
+            HttpStatusCode.OK,
+            "[]",
+            "application/json",
+            url => capturedUrl = url);
+        using var client = BuildClient(handler);
+
+        await client.DiscoverAsync("rs-app", DiscoveryQueryType.AppId);
+
+        Assert.Contains("type=app_id", capturedUrl);
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_Empty_ReturnsEmptyList()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "[]", "application/json");
+        using var client = BuildClient(handler);
+
+        var results = await client.DiscoverAsync("nobody");
+
+        Assert.Empty(results);
+    }
+
+    // ── ConnectAsync (v0.2) ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ConnectAsync_ReturnsAccepted()
+    {
+        var json = """{"status":"ACCEPTED","session_id":"sess-001","expires_at":9999999}""";
+        var handler = new StubHandler(HttpStatusCode.OK, json, "application/json");
+        using var client = BuildClient(handler);
+
+        var result = await client.ConnectAsync("tok-abc", "ru-user", "RU");
+
+        Assert.Equal("ACCEPTED", result.Status);
+        Assert.True(result.IsAccepted);
+        Assert.Equal("sess-001", result.SessionId);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_ReturnsPending()
+    {
+        var json = """{"status":"PENDING"}""";
+        var handler = new StubHandler(HttpStatusCode.OK, json, "application/json");
+        using var client = BuildClient(handler);
+
+        var result = await client.ConnectAsync("tok-xyz", "ru-user", "US");
+
+        Assert.Equal("PENDING", result.Status);
+        Assert.False(result.IsAccepted);
+    }
+
+    // ── AutoAcceptMode enum ──────────────────────────────────────────────────
+
+    [Fact]
+    public void AutoAcceptMode_HasFourValues()
+    {
+        var values = Enum.GetValues<AutoAcceptMode>();
+        Assert.Equal(4, values.Length);
+    }
 }
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
@@ -216,12 +300,14 @@ internal sealed class CapturingHandler(
     Action<string> capture,
     HttpStatusCode status,
     string body,
-    string contentType)
+    string contentType,
+    Action<string>? captureUrl = null)
     : HttpMessageHandler
 {
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        captureUrl?.Invoke(request.RequestUri?.ToString() ?? "");
         if (request.Content is not null)
         {
             var content = await request.Content.ReadAsStringAsync(cancellationToken);

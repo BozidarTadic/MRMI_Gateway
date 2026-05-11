@@ -23,10 +23,12 @@ import (
 	"MRMI_Gateway/internal/inbox"
 	"MRMI_Gateway/internal/peercache"
 	"MRMI_Gateway/internal/policy"
+	"MRMI_Gateway/internal/registry"
 	"MRMI_Gateway/internal/server"
 	"MRMI_Gateway/internal/session"
 	"MRMI_Gateway/internal/trustdecay"
 	"MRMI_Gateway/internal/tlsutil"
+	"MRMI_Gateway/internal/webhook"
 	grpctransport "MRMI_Gateway/internal/transport/grpc"
 )
 
@@ -176,15 +178,41 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		})
 	})
 
+	// Webhook notifier: fire-and-forget POST to registered app URLs on ALLOW.
+	if len(cfg.Apps) > 0 {
+		gw.SetNotifier(webhook.New(cfg))
+	}
+
+	// Registry: user discovery and connect protocol.
+	reg := registry.New(cfg)
+
+	// Runtime peers: populated via POST /api/v1/peers/register.
+	runtimePeers := server.NewRuntimePeers()
+
+	// Config reload callback: re-reads file and applies to engine.
+	var onReload func() error
+	if configPath != "" {
+		onReload = func() error {
+			newCfg, err := config.Load(configPath)
+			if err != nil {
+				return err
+			}
+			return engine.Reload(newCfg)
+		}
+	}
+
 	httpServer := server.NewHTTPServer(cfg, server.ServerDeps{
-		Engine:  engine,
-		Audit:   auditLog,
-		PrivKey: signingKey,
-		Peers:   peerCache,
-		Gateway: gw,
-		DLQ:     dlq,
-		CRL:     crlStore,
-		Inbox:   msgInbox,
+		Engine:         engine,
+		Audit:          auditLog,
+		PrivKey:        signingKey,
+		Peers:          peerCache,
+		Gateway:        gw,
+		DLQ:            dlq,
+		CRL:            crlStore,
+		Inbox:          msgInbox,
+		Registry:       reg,
+		RuntimePeers:   runtimePeers,
+		OnConfigReload: onReload,
 	})
 
 	var adapter grpctransport.GatewayService

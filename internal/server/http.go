@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"MRMI_Gateway/internal/audit"
@@ -17,20 +18,46 @@ import (
 	"MRMI_Gateway/internal/inbox"
 	"MRMI_Gateway/internal/peercache"
 	"MRMI_Gateway/internal/policy"
+	"MRMI_Gateway/internal/registry"
 	"MRMI_Gateway/internal/version"
 )
+
+// RuntimePeers is a thread-safe list of dynamically registered peers.
+type RuntimePeers struct {
+	mu    sync.RWMutex
+	peers []config.PeerConfig
+}
+
+func NewRuntimePeers() *RuntimePeers { return &RuntimePeers{} }
+
+func (rp *RuntimePeers) Add(p config.PeerConfig) {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	rp.peers = append(rp.peers, p)
+}
+
+func (rp *RuntimePeers) All() []config.PeerConfig {
+	rp.mu.RLock()
+	defer rp.mu.RUnlock()
+	out := make([]config.PeerConfig, len(rp.peers))
+	copy(out, rp.peers)
+	return out
+}
 
 // ServerDeps holds optional dependencies for the HTTP server.
 // All fields may be nil; endpoints that require a nil dep return 503.
 type ServerDeps struct {
-	Engine  *policy.Engine
-	Audit   *audit.Log
-	PrivKey ed25519.PrivateKey
-	Peers   *peercache.Cache
-	Gateway *core.Gateway
-	DLQ     *delivery.DLQ
-	CRL     *crl.Store
-	Inbox   *inbox.Inbox
+	Engine         *policy.Engine
+	Audit          *audit.Log
+	PrivKey        ed25519.PrivateKey
+	Peers          *peercache.Cache
+	Gateway        *core.Gateway
+	DLQ            *delivery.DLQ
+	CRL            *crl.Store
+	Inbox          *inbox.Inbox
+	Registry       *registry.Registry
+	RuntimePeers   *RuntimePeers
+	OnConfigReload func() error // called by POST /api/v1/config/reload
 }
 
 type HTTPServer struct {
@@ -64,9 +91,24 @@ type auditResponse struct {
 }
 
 // NewHTTPServer builds the HTTP server.
+// authMiddleware wraps a handler with X-MRMI-Key authentication.
+// When cfg.API.APIKey is empty the request passes through unauthenticated.
+func authMiddleware(apiKey string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if apiKey != "" && r.Header.Get("X-MRMI-Key") != apiKey {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
 func NewHTTPServer(cfg config.Config, deps ServerDeps) *HTTPServer {
 	mux := http.NewServeMux()
 	startTime := time.Now()
+	auth := func(h http.HandlerFunc) http.HandlerFunc {
+		return authMiddleware(cfg.API.APIKey, h)
+	}
 
 	// ── legacy / well-known ──────────────────────────────────────────────────
 
@@ -394,6 +436,142 @@ func NewHTTPServer(cfg config.Config, deps ServerDeps) *HTTPServer {
 				}
 			}
 		}
+	})
+
+	// ── management write endpoints (auth required) ───────────────────────────
+
+	mux.HandleFunc("POST /api/v1/peers/register", auth(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			NodeID    string `json:"node_id"`
+			Addr      string `json:"addr"`
+			NodeScope string `json:"node_scope"`
+			Region    string `json:"region"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Addr == "" {
+			http.Error(w, "addr is required", http.StatusBadRequest)
+			return
+		}
+		if deps.RuntimePeers != nil {
+			deps.RuntimePeers.Add(config.PeerConfig{
+				Region:    req.Region,
+				Addr:      req.Addr,
+				NodeScope: req.NodeScope,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"registered": true, "addr": req.Addr})
+	}))
+
+	mux.HandleFunc("GET /api/v1/peers", auth(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		type peerDTO struct {
+			NodeID    string `json:"node_id,omitempty"`
+			Addr      string `json:"addr"`
+			NodeScope string `json:"node_scope,omitempty"`
+			Region    string `json:"region,omitempty"`
+			Source    string `json:"source"` // "config" | "runtime"
+		}
+		var out []peerDTO
+		for k, p := range cfg.Network.Peers {
+			out = append(out, peerDTO{NodeID: k, Addr: p.Addr, NodeScope: p.NodeScope, Region: p.Region, Source: "config"})
+		}
+		if deps.RuntimePeers != nil {
+			for _, p := range deps.RuntimePeers.All() {
+				out = append(out, peerDTO{Addr: p.Addr, NodeScope: p.NodeScope, Region: p.Region, Source: "runtime"})
+			}
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	}))
+
+	mux.HandleFunc("POST /api/v1/dlq/{index}/discard", auth(func(w http.ResponseWriter, r *http.Request) {
+		if deps.DLQ == nil {
+			http.Error(w, "dlq not available", http.StatusServiceUnavailable)
+			return
+		}
+		idx, err := strconv.Atoi(r.PathValue("index"))
+		if err != nil || idx < 0 {
+			http.Error(w, "invalid index", http.StatusBadRequest)
+			return
+		}
+		deps.DLQ.Remove(idx)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	mux.HandleFunc("POST /api/v1/config/reload", auth(func(w http.ResponseWriter, _ *http.Request) {
+		if deps.OnConfigReload == nil {
+			http.Error(w, "config reload not available", http.StatusServiceUnavailable)
+			return
+		}
+		if err := deps.OnConfigReload(); err != nil {
+			http.Error(w, fmt.Sprintf("reload failed: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"reloaded": true})
+	}))
+
+	mux.HandleFunc("POST /api/v1/revoke/{node_id}", auth(func(w http.ResponseWriter, r *http.Request) {
+		if deps.CRL == nil {
+			http.Error(w, "crl store not available", http.StatusServiceUnavailable)
+			return
+		}
+		nodeID := r.PathValue("node_id")
+		var req struct {
+			Reason       string `json:"reason"`
+			SignatureB64 string `json:"signature_b64"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SignatureB64 == "" {
+			http.Error(w, "reason and signature_b64 required", http.StatusBadRequest)
+			return
+		}
+		sig, err := base64.StdEncoding.DecodeString(req.SignatureB64)
+		if err != nil {
+			http.Error(w, "invalid signature_b64", http.StatusBadRequest)
+			return
+		}
+		deps.CRL.Revoke(nodeID, req.Reason, sig)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"node_id":      nodeID,
+			"is_effective": deps.CRL.IsRevoked(nodeID),
+		})
+	}))
+
+	// ── discovery endpoints ───────────────────────────────────────────────────
+
+	mux.HandleFunc("GET /api/v1/discover", func(w http.ResponseWriter, r *http.Request) {
+		if deps.Registry == nil {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("[]"))
+			return
+		}
+		q := r.URL.Query().Get("q")
+		queryType := r.URL.Query().Get("type")
+		results := deps.Registry.Discover(q, queryType)
+		if results == nil {
+			results = []registry.DiscoveryResult{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(results)
+	})
+
+	mux.HandleFunc("POST /api/v1/connect", func(w http.ResponseWriter, r *http.Request) {
+		if deps.Registry == nil {
+			http.Error(w, "registry not available", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			OpaqueToken     string `json:"opaque_token"`
+			RequesterID     string `json:"requester_id"`
+			RequesterRegion string `json:"requester_region"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.OpaqueToken == "" {
+			http.Error(w, "opaque_token required", http.StatusBadRequest)
+			return
+		}
+		result := deps.Registry.Connect(req.OpaqueToken, req.RequesterID, req.RequesterRegion)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
 	})
 
 	return &HTTPServer{
