@@ -5,10 +5,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
@@ -20,6 +25,7 @@ import (
 	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/registry"
 	"MRMI_Gateway/internal/version"
+	webui "MRMI_Gateway/web"
 )
 
 // RuntimePeers is a thread-safe list of dynamically registered peers.
@@ -44,6 +50,45 @@ func (rp *RuntimePeers) All() []config.PeerConfig {
 	return out
 }
 
+// RuntimeApps is a thread-safe store for dynamically-registered apps (v0.3).
+type RuntimeApps struct {
+	mu   sync.RWMutex
+	apps map[string]runtimeApp
+}
+
+type runtimeApp struct {
+	AppID      string `json:"app_id"`
+	WebhookURL string `json:"webhook_url"`
+	APIKey     string `json:"api_key"`
+	LastSeen   int64  `json:"last_seen"`
+}
+
+func NewRuntimeApps() *RuntimeApps { return &RuntimeApps{apps: make(map[string]runtimeApp)} }
+
+func (ra *RuntimeApps) Register(app runtimeApp) {
+	ra.mu.Lock()
+	ra.apps[app.AppID] = app
+	ra.mu.Unlock()
+}
+
+func (ra *RuntimeApps) Delete(appID string) bool {
+	ra.mu.Lock()
+	defer ra.mu.Unlock()
+	_, ok := ra.apps[appID]
+	delete(ra.apps, appID)
+	return ok
+}
+
+func (ra *RuntimeApps) All() []runtimeApp {
+	ra.mu.RLock()
+	defer ra.mu.RUnlock()
+	out := make([]runtimeApp, 0, len(ra.apps))
+	for _, a := range ra.apps {
+		out = append(out, a)
+	}
+	return out
+}
+
 // ServerDeps holds optional dependencies for the HTTP server.
 // All fields may be nil; endpoints that require a nil dep return 503.
 type ServerDeps struct {
@@ -57,7 +102,9 @@ type ServerDeps struct {
 	Inbox          *inbox.Inbox
 	Registry       *registry.Registry
 	RuntimePeers   *RuntimePeers
+	RuntimeApps    *RuntimeApps
 	OnConfigReload func() error // called by POST /api/v1/config/reload
+	OnConfigSave   func(cfg config.Config) error // called by PUT /api/v1/config
 }
 
 type HTTPServer struct {
@@ -90,25 +137,93 @@ type auditResponse struct {
 	Signature     string `json:"signature"`
 }
 
-// NewHTTPServer builds the HTTP server.
-// authMiddleware wraps a handler with X-MRMI-Key authentication.
-// When cfg.API.APIKey is empty the request passes through unauthenticated.
-func authMiddleware(apiKey string, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if apiKey != "" && r.Header.Get("X-MRMI-Key") != apiKey {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next(w, r)
+// checkAuth validates either X-MRMI-Key or a Bearer JWT.
+// requiredScope is "read" (any authenticated caller) or "operator" (write operations).
+// Returns true when the request is authorized.
+func checkAuth(apiKey, jwtSecret, requiredScope string, r *http.Request) bool {
+	if apiKey == "" && jwtSecret == "" {
+		return true // auth disabled
 	}
+	// API key check
+	if key := r.Header.Get("X-MRMI-Key"); key != "" {
+		return apiKey == "" || key == apiKey
+	}
+	// JWT Bearer token check
+	if jwtSecret != "" {
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+			tok, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
+				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+					return nil, fmt.Errorf("unexpected signing method")
+				}
+				return []byte(jwtSecret), nil
+			})
+			if err != nil || !tok.Valid {
+				return false
+			}
+			claims, ok := tok.Claims.(jwt.MapClaims)
+			if !ok {
+				return false
+			}
+			scope, _ := claims["scope"].(string)
+			if requiredScope == "operator" {
+				return scope == "operator"
+			}
+			return scope == "read" || scope == "operator"
+		}
+	}
+	return false
+}
+
+func corsHeaders(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-MRMI-Key, Authorization")
 }
 
 func NewHTTPServer(cfg config.Config, deps ServerDeps) *HTTPServer {
 	mux := http.NewServeMux()
 	startTime := time.Now()
+
+	// auth wraps a handler requiring at least "read" scope.
 	auth := func(h http.HandlerFunc) http.HandlerFunc {
-		return authMiddleware(cfg.API.APIKey, h)
+		return func(w http.ResponseWriter, r *http.Request) {
+			corsHeaders(w)
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			if !checkAuth(cfg.API.APIKey, cfg.API.JWTSecret, "read", r) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			h(w, r)
+		}
 	}
+	// authOp wraps a handler requiring "operator" scope.
+	authOp := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			corsHeaders(w)
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			if !checkAuth(cfg.API.APIKey, cfg.API.JWTSecret, "operator", r) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			h(w, r)
+		}
+	}
+	// ── embedded dashboard UI ─────────────────────────────────────────────────
+	uiFS, _ := fs.Sub(webui.FS, ".")
+	uiHandler := http.StripPrefix("/ui/", http.FileServer(http.FS(uiFS)))
+	mux.Handle("GET /ui/", uiHandler)
+	mux.Handle("HEAD /ui/", uiHandler)
+	mux.HandleFunc("GET /ui", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/", http.StatusMovedPermanently)
+	})
 
 	// ── legacy / well-known ──────────────────────────────────────────────────
 
@@ -574,12 +689,176 @@ func NewHTTPServer(cfg config.Config, deps ServerDeps) *HTTPServer {
 		_ = json.NewEncoder(w).Encode(result)
 	})
 
+	// ── v0.3 config endpoints ─────────────────────────────────────────────────
+
+	mux.HandleFunc("GET /api/v1/config/schema", auth(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(configSchema())
+	}))
+
+	mux.HandleFunc("PUT /api/v1/config", authOp(func(w http.ResponseWriter, r *http.Request) {
+		if deps.OnConfigSave == nil {
+			http.Error(w, "config save not available", http.StatusServiceUnavailable)
+			return
+		}
+		var incoming config.Config
+		if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+			http.Error(w, "invalid config JSON: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := deps.OnConfigSave(incoming); err != nil {
+			http.Error(w, "config save failed: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	// ── v0.3 app management endpoints ─────────────────────────────────────────
+
+	mux.HandleFunc("GET /api/v1/apps", auth(func(w http.ResponseWriter, _ *http.Request) {
+		type appInfo struct {
+			AppID      string `json:"app_id"`
+			WebhookURL string `json:"webhook_url"`
+			LastSeen   int64  `json:"last_seen"`
+		}
+		var apps []appInfo
+		for id, a := range cfg.Apps {
+			apps = append(apps, appInfo{AppID: id, WebhookURL: a.WebhookURL})
+		}
+		if deps.RuntimeApps != nil {
+			for _, a := range deps.RuntimeApps.All() {
+				apps = append(apps, appInfo{AppID: a.AppID, WebhookURL: a.WebhookURL, LastSeen: a.LastSeen})
+			}
+		}
+		if apps == nil {
+			apps = []appInfo{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(apps)
+	}))
+
+	mux.HandleFunc("POST /api/v1/apps/register", authOp(func(w http.ResponseWriter, r *http.Request) {
+		if deps.RuntimeApps == nil {
+			http.Error(w, "app registry not available", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			AppID         string `json:"app_id"`
+			WebhookURL    string `json:"webhook_url"`
+			WebhookSecret string `json:"webhook_secret"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AppID == "" {
+			http.Error(w, "app_id required", http.StatusBadRequest)
+			return
+		}
+		apiKey := uuid.NewString()
+		deps.RuntimeApps.Register(runtimeApp{
+			AppID:      req.AppID,
+			WebhookURL: req.WebhookURL,
+			APIKey:     apiKey,
+			LastSeen:   time.Now().Unix(),
+		})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]string{"app_id": req.AppID, "api_key": apiKey})
+	}))
+
+	mux.HandleFunc("DELETE /api/v1/apps/{app_id}", authOp(func(w http.ResponseWriter, r *http.Request) {
+		if deps.RuntimeApps == nil {
+			http.Error(w, "app registry not available", http.StatusServiceUnavailable)
+			return
+		}
+		appID := r.PathValue("app_id")
+		if !deps.RuntimeApps.Delete(appID) {
+			http.Error(w, "app not found", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	// Wrap the mux with a CORS middleware so all endpoints respond correctly
+	// to preflight OPTIONS without conflicting with Go 1.22 pattern specificity rules.
+	corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		corsHeaders(w)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+
 	return &HTTPServer{
 		Server: &http.Server{
 			Addr:              cfg.Network.HTTPListenAddr,
-			Handler:           mux,
+			Handler:           corsHandler,
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 		startTime: startTime,
+	}
+}
+
+// configSchema returns a minimal JSON schema describing the MRMI node config.
+func configSchema() map[string]any {
+	return map[string]any{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"title":   "MRMI Gateway Node Configuration",
+		"type":    "object",
+		"properties": map[string]any{
+			"Node": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"NodeID":            map[string]any{"type": "string"},
+					"NodeScope":         map[string]any{"type": "string", "enum": []string{"regional", "alliance", "global"}},
+					"Region":            map[string]any{"type": "string"},
+					"OperatorID":        map[string]any{"type": "string"},
+					"PolicyVersion":     map[string]any{"type": "string"},
+					"ApplicableLaw":     map[string]any{"type": "string"},
+					"DiscoveryTokenTTL": map[string]any{"type": "string", "description": "e.g. 5m0s"},
+				},
+				"required": []string{"NodeID", "NodeScope", "OperatorID", "PolicyVersion", "ApplicableLaw"},
+			},
+			"Policy": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"Outbound": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"AllowTo":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							"DenyTo":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							"StoreLocally": map[string]any{"type": "boolean"},
+						},
+					},
+					"Inbound": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"MinTrustTier": map[string]any{"type": "integer", "minimum": 0, "maximum": 3},
+						},
+					},
+					"Discovery": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"AppIsolation":  map[string]any{"type": "string", "enum": []string{"SAME_APP_ONLY", "WHITELIST", "OPEN"}},
+							"AllowedAppIDs": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+						},
+					},
+					"Connect": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"AutoAccept":   map[string]any{"type": "string", "enum": []string{"MANUAL", "AUTO_WHITELIST", "AUTO_MUTUAL", "AUTO_ALL"}},
+							"TrustedNodes": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+						},
+					},
+				},
+			},
+			"Storage": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"Backend":   map[string]any{"type": "string", "enum": []string{"", "bbolt", "redis"}},
+					"Path":      map[string]any{"type": "string"},
+					"RedisURL":  map[string]any{"type": "string"},
+					"KeyPrefix": map[string]any{"type": "string"},
+				},
+			},
+		},
 	}
 }

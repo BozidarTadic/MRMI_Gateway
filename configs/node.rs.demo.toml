@@ -1,0 +1,38 @@
+[node]
+node_id         = "rs-node-01"
+node_scope      = "regional"
+region          = "RS"
+operator_id     = "example-operator"
+policy_version  = "0.1.0"
+applicable_law  = "RS-GDPR"
+signed_by       = "ed25519:REPLACE_ME"
+
+[profile]
+name            = "balanced"
+
+[policy.outbound]
+allow_to        = ["RU", "BY", "KZ", "AM"]
+deny_to         = []
+store_locally   = true
+
+[policy.inbound]
+min_trust_tier  = 0
+
+[policy.audit]
+log_all_decisions   = true
+log_backend         = "local-merkle"
+export_to_operator  = false
+dns_txt_publish     = false
+
+[network]
+listen_addr         = "0.0.0.0:7787"
+grpc_port           = 7787
+http_port           = 8082
+metrics_port        = 9092
+
+[tls]
+insecure = true
+
+[peers.RU]
+addr       = "localhost:7788"
+node_scope = "regional"

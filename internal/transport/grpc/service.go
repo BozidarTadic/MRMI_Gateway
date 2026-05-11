@@ -14,6 +14,7 @@ type GatewayService interface {
 	ShareRootHash(context.Context, *RootHashMessage) (*RootHashAck, error)
 	BroadcastDiscovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error)
 	Connect(context.Context, *ConnectRequest) (*ConnectAck, error)
+	ExchangePeers(context.Context, *PeerListRequest) (*PeerListResponse, error)
 }
 
 func RegisterGatewayService(server grpc.ServiceRegistrar, svc GatewayService) {
@@ -40,6 +41,10 @@ func RegisterGatewayService(server grpc.ServiceRegistrar, svc GatewayService) {
 			{
 				MethodName: "Connect",
 				Handler:    connectHandler(svc),
+			},
+			{
+				MethodName: "ExchangePeers",
+				Handler:    exchangePeersHandler(svc),
 			},
 		},
 		Streams:  []grpc.StreamDesc{},
@@ -172,6 +177,32 @@ func connectHandler(svc GatewayService) grpc.MethodHandler {
 				return nil, status.Error(codes.Internal, "unexpected request type")
 			}
 			return svc.Connect(ctx, typed)
+		}
+		return interceptor(ctx, request, info, handler)
+	}
+}
+
+func exchangePeersHandler(svc GatewayService) grpc.MethodHandler {
+	return func(service any, ctx context.Context, decode func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+		request := new(PeerListRequest)
+		if err := decode(request); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "decode peer list request: %v", err)
+		}
+
+		if interceptor == nil {
+			return svc.ExchangePeers(ctx, request)
+		}
+
+		info := &grpc.UnaryServerInfo{
+			Server:     service,
+			FullMethod: "/mrmi.v1.GatewayService/ExchangePeers",
+		}
+		handler := func(ctx context.Context, req any) (any, error) {
+			typed, ok := req.(*PeerListRequest)
+			if !ok {
+				return nil, status.Error(codes.Internal, "unexpected request type")
+			}
+			return svc.ExchangePeers(ctx, typed)
 		}
 		return interceptor(ctx, request, info, handler)
 	}

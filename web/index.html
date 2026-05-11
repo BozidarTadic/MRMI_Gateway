@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MRMI Gateway</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --bg2: #1a1d27; --bg3: #252836;
+    --border: #2e3347; --accent: #5b7cf6; --accent2: #7c5bf6;
+    --text: #e2e8f0; --text2: #94a3b8; --text3: #64748b;
+    --green: #22c55e; --red: #ef4444; --yellow: #f59e0b; --blue: #3b82f6;
+  }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; display: flex; flex-direction: column; }
+  header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 16px; }
+  .logo { font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .logo span { color: var(--text2); font-weight: 400; }
+  nav { display: flex; gap: 4px; margin-left: 32px; }
+  nav button { background: none; border: none; color: var(--text2); cursor: pointer; padding: 6px 14px; border-radius: 6px; font-size: 13px; transition: all .15s; }
+  nav button:hover { background: var(--bg3); color: var(--text); }
+  nav button.active { background: var(--accent); color: #fff; }
+  .auth-area { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .auth-area input { background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 12px; width: 200px; }
+  .auth-area input::placeholder { color: var(--text3); }
+  .btn { background: var(--accent); color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn.secondary { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+  .btn.danger { background: var(--red); }
+  .btn.sm { padding: 4px 10px; font-size: 12px; }
+  main { flex: 1; padding: 24px; max-width: 1200px; width: 100%; margin: 0 auto; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; }
+  .card h3 { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+  .card .value { font-size: 22px; font-weight: 700; color: var(--text); }
+  .card .sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+  .section { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; }
+  .section-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .section-header h2 { font-size: 15px; font-weight: 600; }
+  .section-body { padding: 0; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 10px 16px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text3); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text2); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg3); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge.allow { background: #14532d; color: var(--green); }
+  .badge.deny { background: #450a0a; color: var(--red); }
+  .badge.dup { background: #1c1917; color: var(--yellow); }
+  .badge.dummy { background: #0c1a2e; color: var(--blue); }
+  .badge.regional { background: #1e1b4b; color: #818cf8; }
+  .badge.alliance { background: #0f172a; color: #38bdf8; }
+  .badge.global { background: #1a0533; color: #c084fc; }
+  .empty { text-align: center; padding: 40px; color: var(--text3); }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 12px; color: var(--text3); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .4px; }
+  .form-group input, .form-group select, .form-group textarea { width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 13px; font-family: inherit; }
+  .form-group textarea { min-height: 120px; resize: vertical; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); }
+  .form-group select option { background: var(--bg3); }
+  .notice { padding: 10px 14px; border-radius: 6px; font-size: 12px; margin-bottom: 16px; }
+  .notice.warn { background: #451a03; border: 1px solid #92400e; color: #fcd34d; }
+  .notice.info { background: #0c1a2e; border: 1px solid #1e3a5f; color: #93c5fd; }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tag { display: flex; align-items: center; gap: 4px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; font-size: 12px; }
+  .tag button { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
+  .tag button:hover { color: var(--red); }
+  .tag-input { display: flex; gap: 8px; margin-top: 8px; }
+  .tag-input input { flex: 1; }
+  #toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 999; }
+  #toast.show { opacity: 1; }
+  .peer-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; padding: 16px 20px; }
+  .peer-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .peer-card .peer-id { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .peer-card .peer-meta { font-size: 11px; color: var(--text3); display: flex; gap: 8px; flex-wrap: wrap; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">MRMI <span>Gateway</span></span>
+  <nav>
+    <button class="active" onclick="showPage('status')">Status</button>
+    <button onclick="showPage('audit')">Audit Log</button>
+    <button onclick="showPage('dlq')">DLQ</button>
+    <button onclick="showPage('settings')">Settings</button>
+    <button onclick="showPage('apps')">Apps</button>
+  </nav>
+  <div class="auth-area">
+    <input id="apiKey" type="password" placeholder="X-MRMI-Key or JWT" value="">
+    <button class="btn secondary sm" onclick="saveKey()">Save</button>
+  </div>
+</header>
+<main>
+
+<!-- STATUS PAGE -->
+<div id="page-status" class="page active">
+  <div class="grid" id="status-cards"></div>
+  <div class="two-col">
+    <div class="section">
+      <div class="section-header"><h2>Known Peers</h2><button class="btn secondary sm" onclick="loadPeers()">Refresh</button></div>
+      <div id="peer-list" class="peer-list"></div>
+    </div>
+    <div class="section">
+      <div class="section-header"><h2>Node Info</h2></div>
+      <div style="padding:16px 20px" id="node-info-box"></div>
+    </div>
+  </div>
+</div>
+
+<!-- AUDIT LOG PAGE -->
+<div id="page-audit" class="page">
+  <div class="section">
+    <div class="section-header">
+      <h2>Audit Log</h2>
+      <div style="display:flex;gap:8px">
+        <select id="audit-filter" onchange="loadAudit()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px">
+          <option value="">All decisions</option>
+          <option value="ALLOW">ALLOW</option>
+          <option value="DENY">DENY</option>
+          <option value="DUPLICATE">DUPLICATE</option>
+          <option value="DUMMY">DUMMY</option>
+        </select>
+        <input id="audit-limit" type="number" value="50" min="1" max="500" style="width:70px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px">
+        <button class="btn secondary sm" onclick="loadAudit()">Refresh</button>
+        <button class="btn sm" onclick="verifyChain()">Verify Chain</button>
+      </div>
+    </div>
+    <div class="section-body"><table>
+      <thead><tr><th>Seq</th><th>Time</th><th>Decision</th><th>From</th><th>To</th><th>Profile</th><th>Reason</th></tr></thead>
+      <tbody id="audit-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- DLQ PAGE -->
+<div id="page-dlq" class="page">
+  <div class="section">
+    <div class="section-header"><h2>Dead-Letter Queue</h2><button class="btn secondary sm" onclick="loadDLQ()">Refresh</button></div>
+    <div class="section-body"><table>
+      <thead><tr><th>#</th><th>Idempotency Key</th><th>Peer</th><th>Attempts</th><th>Last Error</th><th>First Seen</th><th>Actions</th></tr></thead>
+      <tbody id="dlq-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- SETTINGS PAGE -->
+<div id="page-settings" class="page">
+  <div class="two-col">
+    <div>
+      <div class="section" style="margin-bottom:20px">
+        <div class="section-header"><h2>Profile</h2></div>
+        <div style="padding:16px 20px">
+          <div class="form-group">
+            <label>Active Profile</label>
+            <select id="profile-select" onchange="onProfileChange()">
+              <option value="balanced">Balanced</option>
+              <option value="strict">Strict</option>
+              <option value="performance">Performance</option>
+            </select>
+          </div>
+          <div id="profile-info" class="notice info"></div>
+          <div id="strict-warn" class="notice warn" style="display:none">⚠ Switching away from <strong>strict</strong> on a production node reduces privacy guarantees.</div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-header"><h2>Policy</h2></div>
+        <div style="padding:16px 20px">
+          <div class="form-group">
+            <label>Allow-To Regions</label>
+            <div class="tag-list" id="allow-tags"></div>
+            <div class="tag-input"><input id="allow-input" placeholder="Add region (e.g. RU)"><button class="btn sm" onclick="addTag('allow')">Add</button></div>
+          </div>
+          <div class="form-group">
+            <label>Deny-To Regions</label>
+            <div class="tag-list" id="deny-tags"></div>
+            <div class="tag-input"><input id="deny-input" placeholder="Add region (e.g. US)"><button class="btn sm" onclick="addTag('deny')">Add</button></div>
+          </div>
+          <div class="form-group">
+            <label>Min Trust Tier</label>
+            <select id="min-trust">
+              <option value="0">T0 — No minimum</option>
+              <option value="1">T1 — Basic</option>
+              <option value="2">T2 — Verified</option>
+              <option value="3">T3 — High-assurance</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>App Isolation</label>
+            <select id="app-isolation">
+              <option value="SAME_APP_ONLY">SAME_APP_ONLY — Default</option>
+              <option value="WHITELIST">WHITELIST — Allowed apps only</option>
+              <option value="OPEN">OPEN — Multi-tenant</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Auto-Accept Connect</label>
+            <select id="auto-accept">
+              <option value="MANUAL">MANUAL — App confirms</option>
+              <option value="AUTO_WHITELIST">AUTO_WHITELIST — Trusted nodes</option>
+              <option value="AUTO_MUTUAL">AUTO_MUTUAL — Mutual discovery</option>
+              <option value="AUTO_ALL">AUTO_ALL — Always accept</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="section" style="margin-bottom:20px">
+        <div class="section-header"><h2>Static Peers</h2></div>
+        <div style="padding:16px 20px">
+          <div id="static-peers-list"></div>
+          <div class="form-group" style="margin-top:12px">
+            <label>Add Static Peer</label>
+            <input id="new-peer-addr" placeholder="host:port" style="margin-bottom:6px">
+            <input id="new-peer-scope" placeholder="node_scope (regional/alliance/global)" style="margin-bottom:6px">
+            <input id="new-peer-region" placeholder="region (e.g. RU)">
+          </div>
+          <button class="btn sm" onclick="addPeer()">Add Peer</button>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-header">
+          <h2>TOML Export</h2>
+          <button class="btn sm" onclick="exportTOML()">Download config.toml</button>
+        </div>
+        <div style="padding:16px 20px">
+          <p style="font-size:12px;color:var(--text3);margin-bottom:12px">Exports the current running config as TOML. Sensitive fields are redacted.</p>
+          <textarea id="toml-preview" readonly placeholder="Click Export to preview…" style="min-height:200px;font-size:11px"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
+    <button class="btn secondary" onclick="loadSettings()">Reset</button>
+    <button class="btn" onclick="saveSettings()">Save & Reload</button>
+  </div>
+</div>
+
+<!-- APPS PAGE -->
+<div id="page-apps" class="page">
+  <div class="section" style="margin-bottom:20px">
+    <div class="section-header"><h2>Registered Apps</h2><button class="btn secondary sm" onclick="loadApps()">Refresh</button></div>
+    <div class="section-body"><table>
+      <thead><tr><th>App ID</th><th>Webhook URL</th><th>Last Seen</th><th>Actions</th></tr></thead>
+      <tbody id="apps-tbody"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+    </table></div>
+  </div>
+  <div class="section">
+    <div class="section-header"><h2>Register New App</h2></div>
+    <div style="padding:16px 20px;max-width:500px">
+      <div class="form-group"><label>App ID</label><input id="new-app-id" placeholder="my-app"></div>
+      <div class="form-group"><label>Webhook URL</label><input id="new-app-webhook" placeholder="https://app.example.com/mrmi"></div>
+      <div class="form-group"><label>Webhook Secret</label><input id="new-app-secret" type="password" placeholder="optional HMAC secret"></div>
+      <button class="btn" onclick="registerApp()">Register App</button>
+      <div id="new-app-result" style="margin-top:12px;font-size:12px;color:var(--green)"></div>
+    </div>
+  </div>
+</div>
+
+</main>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

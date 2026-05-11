@@ -17,6 +17,7 @@ import (
 	"MRMI_Gateway/internal/discovery"
 	"MRMI_Gateway/internal/identity"
 	"MRMI_Gateway/internal/peercache"
+	"MRMI_Gateway/internal/peerdiscovery"
 	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/session"
 	"MRMI_Gateway/internal/token"
@@ -25,15 +26,16 @@ import (
 // gatewayAdapter implements GatewayService by delegating to core.Gateway.
 // It is the only place that translates between gRPC transport types and domain types.
 type gatewayAdapter struct {
-	gw          *core.Gateway
-	seqRecv     *session.Tracker
-	verifyKey   ed25519.PublicKey   // nil = skip verification (insecure mode)
-	peerCache   *peercache.Cache    // nil = no gossip storage
-	tokenStore  *token.Store        // nil = discovery/connect disabled
-	broadcaster *discovery.Broadcaster // nil = no peer fan-out
-	connectRes  *connect.Resolver   // nil = always PENDING
-	policyEng   *policy.Engine      // nil = no isolation check
-	nodeCfg     config.Config
+	gw            *core.Gateway
+	seqRecv       *session.Tracker
+	verifyKey     ed25519.PublicKey      // nil = skip verification (insecure mode)
+	peerCache     *peercache.Cache       // nil = no gossip storage
+	tokenStore    *token.Store           // nil = discovery/connect disabled
+	broadcaster   *discovery.Broadcaster // nil = no peer fan-out
+	connectRes    *connect.Resolver      // nil = always PENDING
+	policyEng     *policy.Engine         // nil = no isolation check
+	peerRegistry  *peerdiscovery.Registry // nil = no dynamic peer discovery
+	nodeCfg       config.Config
 }
 
 // NewAdapter wraps a core.Gateway so it satisfies the GatewayService interface.
@@ -52,28 +54,30 @@ func NewAdapterFull(gw *core.Gateway, verifyKey ed25519.PublicKey, peerCache *pe
 	return &gatewayAdapter{gw: gw, seqRecv: session.New(), verifyKey: verifyKey, peerCache: peerCache}
 }
 
-// DiscoveryDeps groups the Sprint-7 dependencies for discovery and connect.
+// DiscoveryDeps groups the Sprint-7/8 dependencies for discovery, connect, and peer exchange.
 type DiscoveryDeps struct {
-	TokenStore  *token.Store
-	Broadcaster *discovery.Broadcaster
-	ConnectRes  *connect.Resolver
-	PolicyEng   *policy.Engine
-	NodeCfg     config.Config
+	TokenStore   *token.Store
+	Broadcaster  *discovery.Broadcaster
+	ConnectRes   *connect.Resolver
+	PolicyEng    *policy.Engine
+	PeerRegistry *peerdiscovery.Registry
+	NodeCfg      config.Config
 }
 
 // NewAdapterWithDiscovery wraps a core.Gateway with all Sprint-7 discovery/connect
 // dependencies in addition to the standard gossip cache.
 func NewAdapterWithDiscovery(gw *core.Gateway, verifyKey ed25519.PublicKey, peerCache *peercache.Cache, deps DiscoveryDeps) GatewayService {
 	return &gatewayAdapter{
-		gw:          gw,
-		seqRecv:     session.New(),
-		verifyKey:   verifyKey,
-		peerCache:   peerCache,
-		tokenStore:  deps.TokenStore,
-		broadcaster: deps.Broadcaster,
-		connectRes:  deps.ConnectRes,
-		policyEng:   deps.PolicyEng,
-		nodeCfg:     deps.NodeCfg,
+		gw:           gw,
+		seqRecv:      session.New(),
+		verifyKey:    verifyKey,
+		peerCache:    peerCache,
+		tokenStore:   deps.TokenStore,
+		broadcaster:  deps.Broadcaster,
+		connectRes:   deps.ConnectRes,
+		policyEng:    deps.PolicyEng,
+		peerRegistry: deps.PeerRegistry,
+		nodeCfg:      deps.NodeCfg,
 	}
 }
 
@@ -270,4 +274,46 @@ func (a *gatewayAdapter) Connect(_ context.Context, req *ConnectRequest) (*Conne
 		ack.ExpiresAt = time.Now().Add(24 * time.Hour).UnixMilli()
 	}
 	return ack, nil
+}
+
+func (a *gatewayAdapter) ExchangePeers(_ context.Context, req *PeerListRequest) (*PeerListResponse, error) {
+	if a.peerRegistry != nil {
+		// Merge the sender's known peers into our registry.
+		for _, p := range req.KnownPeers {
+			a.peerRegistry.Announce(peerdiscovery.PeerInfo{
+				NodeID:    p.NodeID,
+				Addr:      p.Addr,
+				NodeScope: p.NodeScope,
+				Region:    p.Region,
+			})
+		}
+		// Also record the sender itself.
+		if req.SenderNodeID != "" && req.SenderNodeID != a.nodeCfg.Node.NodeID {
+			for _, p := range req.KnownPeers {
+				if p.NodeID == req.SenderNodeID {
+					a.peerRegistry.Announce(peerdiscovery.PeerInfo{
+						NodeID:    p.NodeID,
+						Addr:      p.Addr,
+						NodeScope: p.NodeScope,
+						Region:    p.Region,
+					})
+				}
+			}
+		}
+	}
+
+	// Return our known peer list.
+	var peers []PeerEntry
+	if a.peerRegistry != nil {
+		for _, p := range a.peerRegistry.Known() {
+			peers = append(peers, PeerEntry{
+				NodeID:    p.NodeID,
+				Addr:      p.Addr,
+				NodeScope: p.NodeScope,
+				Region:    p.Region,
+				LastSeen:  p.LastSeen.Unix(),
+			})
+		}
+	}
+	return &PeerListResponse{Peers: peers}, nil
 }

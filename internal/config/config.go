@@ -18,14 +18,24 @@ type Config struct {
 	Network NetworkConfig
 	TLS     TLSConfig
 	API     APIConfig
+	Storage StorageConfig
 	Apps    map[string]AppConfig
+}
+
+// StorageConfig selects the persistence backend for dedup, DLQ, CRL, and audit.
+type StorageConfig struct {
+	Backend   string // "bbolt" | "redis" | "" (in-memory, default)
+	Path      string // directory for bbolt; default "/var/lib/mrmi"
+	RedisURL  string // redis:// URL; used when Backend == "redis"
+	KeyPrefix string // key namespace for Redis; default "mrmi:"
 }
 
 // APIConfig controls management API authentication.
 type APIConfig struct {
 	// APIKey is the value callers must supply in X-MRMI-Key.
 	// Empty string disables authentication (development only).
-	APIKey string
+	APIKey    string
+	JWTSecret string // HMAC-SHA256 secret for JWT bearer tokens; empty = JWT disabled
 }
 
 // AppConfig describes a registered application (webhook target + user registry).
@@ -134,11 +144,13 @@ type PeerConfig struct {
 }
 
 type NetworkConfig struct {
-	GRPCListenAddr  string
-	HTTPListenAddr  string
-	MetricsAddr     string
-	ShutdownTimeout time.Duration
-	Peers           map[string]PeerConfig
+	GRPCListenAddr     string
+	HTTPListenAddr     string
+	MetricsAddr        string
+	ShutdownTimeout    time.Duration
+	Peers              map[string]PeerConfig
+	BootstrapNodes     []string      // seed node gRPC addresses for dynamic discovery
+	PeerGossipInterval time.Duration // how often to run the gossip exchange; default 120s
 }
 
 func Load(path string) (Config, error) {
@@ -302,13 +314,15 @@ type rawTOML struct {
 	} `toml:"policy"`
 
 	Network struct {
-		ListenAddr       string `toml:"listen_addr"`
-		GRPCPort         int    `toml:"grpc_port"`
-		HTTPListenAddr   string `toml:"http_listen_addr"`
-		HTTPPort         int    `toml:"http_port"`
-		MetricsAddr      string `toml:"metrics_addr"`
-		MetricsPort      int    `toml:"metrics_port"`
-		ShutdownTimeoutS int    `toml:"shutdown_timeout_s"`
+		ListenAddr         string   `toml:"listen_addr"`
+		GRPCPort           int      `toml:"grpc_port"`
+		HTTPListenAddr     string   `toml:"http_listen_addr"`
+		HTTPPort           int      `toml:"http_port"`
+		MetricsAddr        string   `toml:"metrics_addr"`
+		MetricsPort        int      `toml:"metrics_port"`
+		ShutdownTimeoutS   int      `toml:"shutdown_timeout_s"`
+		BootstrapNodes     []string `toml:"bootstrap_nodes"`
+		PeerGossipIntervalS int     `toml:"peer_gossip_interval_s"`
 	} `toml:"network"`
 
 	Peers map[string]struct {
@@ -325,8 +339,16 @@ type rawTOML struct {
 	} `toml:"tls"`
 
 	API struct {
-		APIKey string `toml:"api_key"`
+		APIKey    string `toml:"api_key"`
+		JWTSecret string `toml:"jwt_secret"`
 	} `toml:"api"`
+
+	Storage struct {
+		Backend   string `toml:"backend"`
+		Path      string `toml:"path"`
+		RedisURL  string `toml:"redis_url"`
+		KeyPrefix string `toml:"key_prefix"`
+	} `toml:"storage"`
 
 	Apps map[string]struct {
 		WebhookURL     string `toml:"webhook_url"`
@@ -464,6 +486,12 @@ func (r rawTOML) apply(cfg *Config) {
 	if r.Network.ShutdownTimeoutS > 0 {
 		cfg.Network.ShutdownTimeout = time.Duration(r.Network.ShutdownTimeoutS) * time.Second
 	}
+	if r.Network.BootstrapNodes != nil {
+		cfg.Network.BootstrapNodes = r.Network.BootstrapNodes
+	}
+	if r.Network.PeerGossipIntervalS > 0 {
+		cfg.Network.PeerGossipInterval = time.Duration(r.Network.PeerGossipIntervalS) * time.Second
+	}
 
 	if v := strings.TrimSpace(r.TLS.Cert); v != "" {
 		cfg.TLS.Cert = v
@@ -490,6 +518,22 @@ func (r rawTOML) apply(cfg *Config) {
 
 	if v := strings.TrimSpace(r.API.APIKey); v != "" {
 		cfg.API.APIKey = v
+	}
+	if v := strings.TrimSpace(r.API.JWTSecret); v != "" {
+		cfg.API.JWTSecret = v
+	}
+
+	if v := strings.TrimSpace(r.Storage.Backend); v != "" {
+		cfg.Storage.Backend = v
+	}
+	if v := strings.TrimSpace(r.Storage.Path); v != "" {
+		cfg.Storage.Path = v
+	}
+	if v := strings.TrimSpace(r.Storage.RedisURL); v != "" {
+		cfg.Storage.RedisURL = v
+	}
+	if v := strings.TrimSpace(r.Storage.KeyPrefix); v != "" {
+		cfg.Storage.KeyPrefix = v
 	}
 
 	if r.Apps != nil {
