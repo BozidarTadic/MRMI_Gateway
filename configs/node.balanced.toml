@@ -27,6 +27,7 @@ dns_txt_interval_s  = 21600
 https_well_known    = true
 
 [network]
-listen_addr         = "0.0.0.0:7777"
-grpc_port           = 7777
-metrics_port        = 9090
+grpc_listen_addr = "0.0.0.0:7777"
+http_listen_addr = "0.0.0.0:8080"
+metrics_addr     = "0.0.0.0:9090"
+

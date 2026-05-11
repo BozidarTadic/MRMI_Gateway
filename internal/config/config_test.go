@@ -32,8 +32,8 @@ func TestLoadBalancedConfigFromFile(t *testing.T) {
 	if cfg.Network.GRPCListenAddr != "0.0.0.0:7777" {
 		t.Fatalf("expected grpc listen addr 0.0.0.0:7777, got %q", cfg.Network.GRPCListenAddr)
 	}
-	if cfg.Network.MetricsAddr != ":9090" {
-		t.Fatalf("expected metrics addr :9090, got %q", cfg.Network.MetricsAddr)
+	if cfg.Network.MetricsAddr != "0.0.0.0:9090" {
+		t.Fatalf("expected metrics addr 0.0.0.0:9090, got %q", cfg.Network.MetricsAddr)
 	}
 	if cfg.Policy.Audit.DNSTXTInterval != 6*time.Hour {
 		t.Fatalf("expected dns interval 6h, got %v", cfg.Policy.Audit.DNSTXTInterval)

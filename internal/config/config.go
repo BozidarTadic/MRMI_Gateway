@@ -316,8 +316,9 @@ type rawTOML struct {
 	} `toml:"policy"`
 
 	Network struct {
-		ListenAddr         string   `toml:"listen_addr"`
-		GRPCPort           int      `toml:"grpc_port"`
+		GRPCListenAddr     string   `toml:"grpc_listen_addr"` // preferred key
+		ListenAddr         string   `toml:"listen_addr"`      // legacy alias
+		GRPCPort           int      `toml:"grpc_port"`        // legacy fallback
 		HTTPListenAddr     string   `toml:"http_listen_addr"`
 		HTTPPort           int      `toml:"http_port"`
 		MetricsAddr        string   `toml:"metrics_addr"`
@@ -473,7 +474,9 @@ func (r rawTOML) apply(cfg *Config) {
 		cfg.Policy.Connect.TrustedNodes = r.Policy.Connect.TrustedNodes
 	}
 
-	if v := strings.TrimSpace(r.Network.ListenAddr); v != "" {
+	if v := strings.TrimSpace(r.Network.GRPCListenAddr); v != "" {
+		cfg.Network.GRPCListenAddr = v
+	} else if v := strings.TrimSpace(r.Network.ListenAddr); v != "" {
 		cfg.Network.GRPCListenAddr = v
 	} else if r.Network.GRPCPort > 0 {
 		cfg.Network.GRPCListenAddr = fmt.Sprintf(":%d", r.Network.GRPCPort)

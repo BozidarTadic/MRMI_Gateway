@@ -316,6 +316,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	go runPeerGossip(ctx, cfg, peerRegistry, clientTLS, gossipInterval)
 
 	discoveryLimiter := ratelimit.New(10, 20) // 10 req/s, burst 20 per origin node
+	defer discoveryLimiter.Close()
 
 	discoveryDeps := grpctransport.DiscoveryDeps{
 		TokenStore:       tokenStore,
