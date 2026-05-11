@@ -49,7 +49,7 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.1 (Sprint 3 complete)
+## Current Status — v0.1 (Sprint 4 in progress)
 
 **Sprint 1 + 2 — complete**
 
@@ -79,13 +79,16 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 - [x] Trust decay timer — auto-reduce effective tier after 30 days without cross-validation
 - [x] Dummy traffic generator — synthetic envelopes at profile-defined intervals (`dummy` package)
 
+**Sprint 4 — in progress**
+
+- [ ] HTTPS `/.well-known/mrmi-audit` with Ed25519 signature (`https_well_known = true`)
+- [ ] Cross-node root hash gossip — peers cross-verify audit chains (`root_hash_gossip = true`)
+- [ ] Policy hot-reload — config changes applied within 5 seconds without restart (`hotreload` package)
+- [ ] `mrmi` CLI — `keygen`, `audit verify --local/--dns/--https`
+
 **Future**
 
-- [ ] `mrmi keygen` CLI + audit verify command (Sprint 4)
-- [ ] HTTPS `/.well-known/mrmi-audit` Ed25519 signature (Sprint 4)
-- [ ] Cross-node root hash gossip (Sprint 4)
-- [ ] Policy hot-reload within 5 seconds (Sprint 4)
-- [ ] .NET SDK (Sprint 5 / Milestone 4)
+- [ ] .NET SDK (v0.3)
 - [ ] CLI reference client (open for contributors)
 - [ ] Java SDK (open for contributors)
 

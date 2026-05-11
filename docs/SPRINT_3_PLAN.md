@@ -1,5 +1,7 @@
 # Sprint 3 Plan
 
+> **COMPLETE** — commits `4d4c5e4`…`41c3c0c` · all 7 tasks delivered · `go test ./...` green
+
 ## Context
 
 Sprint 2 delivered the RS→RU corridor: mTLS inter-node gRPC, tier-aware forwarding, retry/DLQ, jitter/padding, and DNS TXT publication. What it did not deliver is any trust enforcement beyond the basic allow/deny region check. An attacker can send any envelope from any identity with any trust tier and it will be forwarded if the region is permitted.
