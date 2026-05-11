@@ -73,6 +73,7 @@ type Gateway struct {
 	audit     *audit.Log
 	dedup     *dedup.Index
 	forwarder Forwarder // nil = forwarding disabled
+	onAllow   func(env Envelope)
 }
 
 // NewGateway creates a Gateway. Pass nil for forwarder to disable outbound forwarding
@@ -85,6 +86,12 @@ func NewGateway(cfg config.Config, policyEngine *policy.Engine, auditLog *audit.
 		dedup:     dedupIndex,
 		forwarder: forwarder,
 	}
+}
+
+// SetOnAllow registers a callback invoked after each ALLOW decision, before
+// forwarding. Used to publish received envelopes to the inbox for SSE clients.
+func (g *Gateway) SetOnAllow(fn func(env Envelope)) {
+	g.onAllow = fn
 }
 
 func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendResponse, error) {
@@ -124,10 +131,15 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 	})
 
 	var peerRootHash string
-	if result.Decision == policy.DecisionAllow && g.forwarder != nil {
-		if err := applyJitter(ctx, g.cfg.Profile.TimingJitterMax); err == nil {
-			env := applyPadding(req.Envelope, g.cfg.Profile.PaddingBucket)
-			peerRootHash, _ = g.forwarder.Forward(ctx, env)
+	if result.Decision == policy.DecisionAllow {
+		if g.onAllow != nil {
+			g.onAllow(req.Envelope)
+		}
+		if g.forwarder != nil {
+			if err := applyJitter(ctx, g.cfg.Profile.TimingJitterMax); err == nil {
+				env := applyPadding(req.Envelope, g.cfg.Profile.PaddingBucket)
+				peerRootHash, _ = g.forwarder.Forward(ctx, env)
+			}
 		}
 	}
 

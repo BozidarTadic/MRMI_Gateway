@@ -98,6 +98,26 @@ func (l *Log) Entries() []Entry {
 	return out
 }
 
+// Recent returns the last n entries in reverse chronological order (newest first).
+// If the log has fewer than n entries all entries are returned.
+func (l *Log) Recent(n int) []Entry {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	total := len(l.entries)
+	if n <= 0 || total == 0 {
+		return nil
+	}
+	if n > total {
+		n = total
+	}
+	out := make([]Entry, n)
+	for i := 0; i < n; i++ {
+		out[i] = l.entries[total-1-i]
+	}
+	return out
+}
+
 func (l *Log) Verify() error {
 	l.mu.RLock()
 	defer l.mu.RUnlock()

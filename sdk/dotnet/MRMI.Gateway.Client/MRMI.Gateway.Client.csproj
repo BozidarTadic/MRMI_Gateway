@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>MRMI.Gateway.Client</RootNamespace>
+    <AssemblyName>MRMI.Gateway.Client</AssemblyName>
+    <PackageId>MRMI.Gateway.Client</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Božidar Tadić</Authors>
+    <Description>Official .NET SDK for the MRMI Gateway — multi-regional messaging corridor client.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+</Project>

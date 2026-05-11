@@ -80,7 +80,12 @@ func startHTTPNode(t *testing.T, cfg config.Config, privKey ed25519.PrivateKey, 
 	_ = l.Close()
 
 	cfg.Network.HTTPListenAddr = httpAddr
-	httpSrv := server.NewHTTPServer(cfg, engine, auditLog, privKey, peerCache)
+	httpSrv := server.NewHTTPServer(cfg, server.ServerDeps{
+		Engine:  engine,
+		Audit:   auditLog,
+		PrivKey: privKey,
+		Peers:   peerCache,
+	})
 	go func() { _ = httpSrv.ListenAndServe() }()
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)

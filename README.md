@@ -49,7 +49,7 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.1 (Sprint 4 complete)
+## Current Status — v0.1 (Sprint 5 complete)
 
 **Sprint 1 + 2 — complete**
 
@@ -86,9 +86,15 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 - [x] Policy hot-reload — config changes applied within 5 seconds without restart (`hotreload` package)
 - [x] `mrmi` CLI — `keygen`, `audit verify --local/--dns/--https`
 
+**Sprint 5 — complete**
+
+- [x] Management REST API (`/api/v1/status`, `/api/v1/envelopes`, `/api/v1/audit/latest`, `/api/v1/dlq`, `/api/v1/crl`, `/api/v1/stream`)
+- [x] .NET SDK `MrmiClient` — `Send`, `Receive`, DLQ/CRL management (`sdk/dotnet/MRMI.Gateway.Client/`)
+- [x] Acceptance test suite (`test/acceptance/`) — 12 tests covering all REST endpoints + SSE stream
+- [x] Seed Node Deployment Guide (`docs/SEED_NODE_GUIDE.md`)
+
 **Future**
 
-- [ ] .NET SDK (v0.3)
 - [ ] CLI reference client (open for contributors)
 - [ ] Java SDK (open for contributors)
 
@@ -137,8 +143,8 @@ Profile definitions (dedup TTL, jitter, padding, dummy traffic rates) live in `i
 cmd/mrmi-gateway/   — node process entrypoint
 cmd/mrmi/           — operator CLI (keygen, audit verify)
 internal/
-  app/              — wiring: audit, policy, HTTP, gRPC, shutdown
-  audit/            — Merkle chain log (SHA-256, Verify, RootHash)
+  app/              — wiring: audit, policy, HTTP, gRPC, inbox, shutdown
+  audit/            — Merkle chain log (SHA-256, Verify, RootHash, Recent)
   config/           — TOML parser, validation, profile presets
   core/             — domain types: Gateway, Envelope, SendRequest/Response
   crl/              — Certificate Revocation List store (≥2 sig quorum)
@@ -147,9 +153,10 @@ internal/
   dnstxt/           — DNS TXT root hash publisher
   dummy/            — synthetic dummy traffic generator
   identity/         — Ed25519 key generation, envelope sign/verify
+  inbox/            — fan-out broadcaster for SSE stream subscribers
   integration/      — multi-node end-to-end tests
   policy/           — policy engine (region allow/deny, trust tier, CRL)
-  server/           — HTTP endpoints (healthz, readyz, mrmi-audit)
+  server/           — HTTP endpoints (healthz, readyz, management API, SSE)
   session/          — per-sender sequence number tracker
   testcerts/        — in-process self-signed cert generation (tests only)
   tlsutil/          — LoadServerTLS / LoadClientTLS
@@ -160,6 +167,8 @@ internal/
   version/          — single source of truth for App + ADR version strings
 proto/mrmi/v1/      — protobuf contracts
 configs/            — operator TOML configs
+sdk/dotnet/         — .NET 10 SDK (MRMI.Gateway.Client NuGet package)
+test/acceptance/    — end-to-end REST API acceptance tests
 docs/               — ADR, sprint plans, operator guides
 ```
 

@@ -20,6 +20,7 @@ import (
 	"MRMI_Gateway/internal/dummy"
 	"MRMI_Gateway/internal/hotreload"
 	"MRMI_Gateway/internal/identity"
+	"MRMI_Gateway/internal/inbox"
 	"MRMI_Gateway/internal/peercache"
 	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/server"
@@ -162,7 +163,29 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		}
 	}
 
-	httpServer := server.NewHTTPServer(cfg, engine, auditLog, signingKey, peerCache)
+	// Inbox: fan-out broadcaster for SSE clients.
+	msgInbox := inbox.New()
+	gw.SetOnAllow(func(env core.Envelope) {
+		msgInbox.Publish(inbox.Event{
+			IdempotencyKey:  env.IdempotencyKey,
+			SenderRegion:    env.SenderRegion,
+			RecipientRegion: env.RecipientRegion,
+			TrustTier:       env.TrustTier,
+			Payload:         env.Payload,
+			Timestamp:       env.Timestamp,
+		})
+	})
+
+	httpServer := server.NewHTTPServer(cfg, server.ServerDeps{
+		Engine:  engine,
+		Audit:   auditLog,
+		PrivKey: signingKey,
+		Peers:   peerCache,
+		Gateway: gw,
+		DLQ:     dlq,
+		CRL:     crlStore,
+		Inbox:   msgInbox,
+	})
 
 	var adapter grpctransport.GatewayService
 	if peerCache != nil {
