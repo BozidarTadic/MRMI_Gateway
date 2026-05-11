@@ -56,3 +56,11 @@ func (c *Client) GetNodeInfo(ctx context.Context, request *GetNodeInfoRequest) (
 	}
 	return response, nil
 }
+
+func (c *Client) ShareRootHash(ctx context.Context, request *RootHashMessage) (*RootHashAck, error) {
+	response := new(RootHashAck)
+	if err := c.conn.Invoke(ctx, "/mrmi.v1.GatewayService/ShareRootHash", request, response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}

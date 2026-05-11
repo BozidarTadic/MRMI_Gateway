@@ -11,6 +11,7 @@ import (
 
 	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/identity"
+	"MRMI_Gateway/internal/peercache"
 	"MRMI_Gateway/internal/session"
 )
 
@@ -20,10 +21,10 @@ type gatewayAdapter struct {
 	gw        *core.Gateway
 	seqRecv   *session.Tracker
 	verifyKey ed25519.PublicKey // nil = skip verification (insecure mode)
+	peerCache *peercache.Cache  // nil = no gossip storage
 }
 
 // NewAdapter wraps a core.Gateway so it satisfies the GatewayService interface.
-// Pass a non-nil verifyKey to enforce Ed25519 signature verification on inbound envelopes.
 func NewAdapter(gw *core.Gateway) GatewayService {
 	return &gatewayAdapter{gw: gw, seqRecv: session.New()}
 }
@@ -31,6 +32,12 @@ func NewAdapter(gw *core.Gateway) GatewayService {
 // NewAdapterWithVerify wraps a core.Gateway with a public key for signature verification.
 func NewAdapterWithVerify(gw *core.Gateway, verifyKey ed25519.PublicKey) GatewayService {
 	return &gatewayAdapter{gw: gw, seqRecv: session.New(), verifyKey: verifyKey}
+}
+
+// NewAdapterFull wraps a core.Gateway with optional signature verification and
+// an optional peer cache for root hash gossip storage.
+func NewAdapterFull(gw *core.Gateway, verifyKey ed25519.PublicKey, peerCache *peercache.Cache) GatewayService {
+	return &gatewayAdapter{gw: gw, seqRecv: session.New(), verifyKey: verifyKey, peerCache: peerCache}
 }
 
 func (a *gatewayAdapter) SendEnvelope(ctx context.Context, req *SendEnvelopeRequest) (*SendEnvelopeResponse, error) {
@@ -104,4 +111,11 @@ func (a *gatewayAdapter) GetNodeInfo(ctx context.Context, req *GetNodeInfoReques
 		ApplicableLaw: info.ApplicableLaw,
 		Profile:       info.Profile,
 	}, nil
+}
+
+func (a *gatewayAdapter) ShareRootHash(_ context.Context, req *RootHashMessage) (*RootHashAck, error) {
+	if a.peerCache != nil {
+		a.peerCache.Store(req.NodeID, req.RootHash, req.Timestamp)
+	}
+	return &RootHashAck{Accepted: true}, nil
 }

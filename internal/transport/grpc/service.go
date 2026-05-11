@@ -11,6 +11,7 @@ import (
 type GatewayService interface {
 	SendEnvelope(context.Context, *SendEnvelopeRequest) (*SendEnvelopeResponse, error)
 	GetNodeInfo(context.Context, *GetNodeInfoRequest) (*GetNodeInfoResponse, error)
+	ShareRootHash(context.Context, *RootHashMessage) (*RootHashAck, error)
 }
 
 func RegisterGatewayService(server grpc.ServiceRegistrar, svc GatewayService) {
@@ -25,6 +26,10 @@ func RegisterGatewayService(server grpc.ServiceRegistrar, svc GatewayService) {
 			{
 				MethodName: "GetNodeInfo",
 				Handler:    getNodeInfoHandler(svc),
+			},
+			{
+				MethodName: "ShareRootHash",
+				Handler:    shareRootHashHandler(svc),
 			},
 		},
 		Streams:  []grpc.StreamDesc{},
@@ -79,6 +84,32 @@ func getNodeInfoHandler(svc GatewayService) grpc.MethodHandler {
 				return nil, status.Error(codes.Internal, "unexpected request type")
 			}
 			return svc.GetNodeInfo(ctx, typed)
+		}
+		return interceptor(ctx, request, info, handler)
+	}
+}
+
+func shareRootHashHandler(svc GatewayService) grpc.MethodHandler {
+	return func(service any, ctx context.Context, decode func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+		request := new(RootHashMessage)
+		if err := decode(request); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "decode share root hash request: %v", err)
+		}
+
+		if interceptor == nil {
+			return svc.ShareRootHash(ctx, request)
+		}
+
+		info := &grpc.UnaryServerInfo{
+			Server:     service,
+			FullMethod: "/mrmi.v1.GatewayService/ShareRootHash",
+		}
+		handler := func(ctx context.Context, req any) (any, error) {
+			typed, ok := req.(*RootHashMessage)
+			if !ok {
+				return nil, status.Error(codes.Internal, "unexpected request type")
+			}
+			return svc.ShareRootHash(ctx, typed)
 		}
 		return interceptor(ctx, request, info, handler)
 	}

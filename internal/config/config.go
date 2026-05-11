@@ -79,6 +79,7 @@ type AuditPolicy struct {
 	DNSTXTPublish    bool
 	DNSTXTInterval   time.Duration
 	HTTPSWellKnown   bool
+	RootHashGossip   bool
 }
 
 // PeerConfig describes a single peer node. For regional peers the map key is the
@@ -243,6 +244,7 @@ type rawTOML struct {
 			DNSPublish      *bool  `toml:"dns_txt_publish"`
 			DNSIntervalS    int    `toml:"dns_txt_interval_s"`
 			HTTPSWellKnown  *bool  `toml:"https_well_known"`
+			RootHashGossip  *bool  `toml:"root_hash_gossip"`
 		} `toml:"audit"`
 		Routing struct {
 			AllowVia []string `toml:"allow_via"`
@@ -356,6 +358,9 @@ func (r rawTOML) apply(cfg *Config) {
 	}
 	if r.Policy.Audit.HTTPSWellKnown != nil {
 		cfg.Policy.Audit.HTTPSWellKnown = *r.Policy.Audit.HTTPSWellKnown
+	}
+	if r.Policy.Audit.RootHashGossip != nil {
+		cfg.Policy.Audit.RootHashGossip = *r.Policy.Audit.RootHashGossip
 	}
 	if r.Policy.Routing.AllowVia != nil {
 		cfg.Policy.Routing.AllowVia = r.Policy.Routing.AllowVia

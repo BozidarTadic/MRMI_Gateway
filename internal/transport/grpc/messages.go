@@ -38,3 +38,14 @@ type GetNodeInfoResponse struct {
 	ApplicableLaw string `json:"applicable_law"`
 	Profile       string `json:"profile"`
 }
+
+type RootHashMessage struct {
+	NodeID    string `json:"node_id"`
+	RootHash  string `json:"root_hash"`
+	Timestamp int64  `json:"timestamp"`
+	Signature []byte `json:"signature,omitempty"`
+}
+
+type RootHashAck struct {
+	Accepted bool `json:"accepted"`
+}

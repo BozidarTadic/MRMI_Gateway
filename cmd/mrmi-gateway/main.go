@@ -43,7 +43,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := app.Run(ctx, cfg); err != nil {
+	if err := app.Run(ctx, cfg, configPath); err != nil {
 		log.Fatalf("run gateway: %v", err)
 	}
 }

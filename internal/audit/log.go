@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -120,6 +121,54 @@ func (l *Log) Verify() error {
 	}
 
 	return nil
+}
+
+// WriteJSON serialises all current entries to path as a JSON array.
+// The resulting file can be verified offline with VerifyFile.
+func (l *Log) WriteJSON(path string) error {
+	l.mu.RLock()
+	entries := make([]Entry, len(l.entries))
+	copy(entries, l.entries)
+	l.mu.RUnlock()
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return json.NewEncoder(f).Encode(entries)
+}
+
+// VerifyFile reads a JSON log file produced by WriteJSON, recomputes every
+// entry hash, and checks that the Merkle chain is intact.
+// Returns the final root hash on success.
+func VerifyFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	var entries []Entry
+	if err := json.NewDecoder(f).Decode(&entries); err != nil {
+		return "", fmt.Errorf("parse log file: %w", err)
+	}
+
+	expectedPrev := zeroHash()
+	for i, entry := range entries {
+		if entry.PreviousHash != expectedPrev {
+			return "", fmt.Errorf("entry %d previous hash mismatch", i+1)
+		}
+		if hashEntry(entry) != entry.EntryHash {
+			return "", fmt.Errorf("entry %d hash mismatch", i+1)
+		}
+		expectedPrev = entry.EntryHash
+	}
+
+	if len(entries) == 0 {
+		return zeroHash(), nil
+	}
+	return entries[len(entries)-1].EntryHash, nil
 }
 
 func hashEntry(entry Entry) string {

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log"
@@ -17,16 +18,20 @@ import (
 	"MRMI_Gateway/internal/delivery"
 	"MRMI_Gateway/internal/dnstxt"
 	"MRMI_Gateway/internal/dummy"
+	"MRMI_Gateway/internal/hotreload"
 	"MRMI_Gateway/internal/identity"
+	"MRMI_Gateway/internal/peercache"
 	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/server"
 	"MRMI_Gateway/internal/session"
-	"MRMI_Gateway/internal/tlsutil"
 	"MRMI_Gateway/internal/trustdecay"
+	"MRMI_Gateway/internal/tlsutil"
 	grpctransport "MRMI_Gateway/internal/transport/grpc"
 )
 
-func Run(ctx context.Context, cfg config.Config) error {
+// Run starts the gateway node. configPath is the path to the loaded config file;
+// pass an empty string when config was loaded from defaults (hot-reload is skipped).
+func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	signingKey, _, err := identity.GenerateKey()
 	if err != nil {
 		return fmt.Errorf("generate signing key: %w", err)
@@ -75,6 +80,23 @@ func Run(ctx context.Context, cfg config.Config) error {
 			p := dnstxt.New(cfg.Node.NodeID, cfg.Node.ApplicableLaw, cfg.Policy.Audit.DNSTXTInterval, os.Stdout)
 			go p.Run(ctx, auditLog.RootHash)
 		}
+	}
+
+	// Hot-reload: watch config file for changes and apply new policy atomically.
+	if configPath != "" {
+		lastVersion := cfg.Node.PolicyVersion
+		watcher := hotreload.New()
+		go watcher.Watch(ctx, configPath, func(newCfg config.Config) {
+			if newCfg.Node.PolicyVersion == lastVersion {
+				log.Printf("[hotreload] warning: policy_version unchanged (%s) — update policy_version when changing policy", lastVersion)
+			}
+			if err := engine.Reload(newCfg); err != nil {
+				log.Printf("[hotreload] rejected invalid config: %v", err)
+				return
+			}
+			lastVersion = newCfg.Node.PolicyVersion
+			log.Printf("[hotreload] policy reloaded: version %s", newCfg.Node.PolicyVersion)
+		})
 	}
 
 	dlq := delivery.NewDLQ()
@@ -131,8 +153,25 @@ func Run(ctx context.Context, cfg config.Config) error {
 		})
 	}
 
-	httpServer := server.NewHTTPServer(cfg, engine, auditLog)
-	grpcServer, err := grpctransport.NewServer(cfg.Network.GRPCListenAddr, grpctransport.NewAdapter(gw), serverTLS)
+	// Peer cache and root hash gossip.
+	var peerCache *peercache.Cache
+	if cfg.Policy.Audit.RootHashGossip {
+		peerCache = peercache.New()
+		if cfg.Policy.Audit.DNSTXTInterval > 0 && len(cfg.Network.Peers) > 0 {
+			go runGossip(ctx, cfg, auditLog, clientTLS)
+		}
+	}
+
+	httpServer := server.NewHTTPServer(cfg, engine, auditLog, signingKey, peerCache)
+
+	var adapter grpctransport.GatewayService
+	if peerCache != nil {
+		adapter = grpctransport.NewAdapterFull(gw, nil, peerCache)
+	} else {
+		adapter = grpctransport.NewAdapter(gw)
+	}
+
+	grpcServer, err := grpctransport.NewServer(cfg.Network.GRPCListenAddr, adapter, serverTLS)
 	if err != nil {
 		return fmt.Errorf("create grpc server: %w", err)
 	}
@@ -171,6 +210,35 @@ func runPurge(ctx context.Context, idx *dedup.Index) {
 			return
 		case <-ticker.C:
 			idx.Purge()
+		}
+	}
+}
+
+func runGossip(ctx context.Context, cfg config.Config, auditLog *audit.Log, clientTLS *tls.Config) {
+	ticker := time.NewTicker(cfg.Policy.Audit.DNSTXTInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			rootHash := auditLog.RootHash()
+			ts := time.Now().Unix()
+			for _, peer := range cfg.Network.Peers {
+				dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				client, err := grpctransport.Dial(dialCtx, peer.Addr, clientTLS)
+				cancel()
+				if err != nil {
+					log.Printf("[gossip] dial %s: %v", peer.Addr, err)
+					continue
+				}
+				_, _ = client.ShareRootHash(ctx, &grpctransport.RootHashMessage{
+					NodeID:    cfg.Node.NodeID,
+					RootHash:  rootHash,
+					Timestamp: ts,
+				})
+				_ = client.Close()
+			}
 		}
 	}
 }
