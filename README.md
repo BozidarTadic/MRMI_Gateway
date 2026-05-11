@@ -49,7 +49,7 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.1 (Sprint 3 in progress)
+## Current Status — v0.1 (Sprint 3 complete)
 
 **Sprint 1 + 2 — complete**
 
@@ -69,15 +69,15 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 - [x] Retry with exponential backoff and dead-letter queue (`delivery` package)
 - [x] Node tier model — `node_scope`, `alliance_id`, `node_region` in config and audit entries
 
-**Sprint 3 — in progress**
+**Sprint 3 — complete**
 
-- [ ] `applicable_law` in DNS TXT output + startup warning on unset production profile
-- [ ] Trust tier violation reason and tier value in audit entries
-- [ ] Per-sender sequence number tracker (`session` package)
-- [ ] Ed25519 envelope signing — sign on send, verify before policy evaluation (`identity` package)
-- [ ] CRL store and revocation gossip — ≥2 T2+ signatures required (`crl` package)
-- [ ] Trust decay timer — auto-reduce effective tier after 30 days without cross-validation
-- [ ] Dummy traffic generator — synthetic envelopes at profile-defined intervals (`dummy` package)
+- [x] `applicable_law` in DNS TXT output + startup warning on unset production profile
+- [x] Trust tier violation reason and tier value in audit entries
+- [x] Per-sender sequence number tracker (`session` package)
+- [x] Ed25519 envelope signing — sign on send, verify before policy evaluation (`identity` package)
+- [x] CRL store and revocation gossip — ≥2 T2+ signatures required (`crl` package)
+- [x] Trust decay timer — auto-reduce effective tier after 30 days without cross-validation
+- [x] Dummy traffic generator — synthetic envelopes at profile-defined intervals (`dummy` package)
 
 **Future**
 
@@ -137,15 +137,21 @@ internal/
   audit/            — Merkle chain log (SHA-256, Verify, RootHash)
   config/           — TOML parser, validation, profile presets
   core/             — domain types: Gateway, Envelope, SendRequest/Response
+  crl/              — Certificate Revocation List store (≥2 sig quorum)
   dedup/            — idempotency key store with TTL + Purge
   delivery/         — Forwarder, retry backoff, DLQ
   dnstxt/           — DNS TXT root hash publisher
+  dummy/            — synthetic dummy traffic generator
+  identity/         — Ed25519 key generation, envelope sign/verify
   integration/      — multi-node end-to-end tests
-  policy/           — policy engine (region allow/deny, trust tier)
+  policy/           — policy engine (region allow/deny, trust tier, CRL)
   server/           — HTTP endpoints (healthz, readyz, mrmi-audit)
+  session/          — per-sender sequence number tracker
   testcerts/        — in-process self-signed cert generation (tests only)
   tlsutil/          — LoadServerTLS / LoadClientTLS
   transport/grpc/   — gRPC server + client, JSON codec
+  trustdecay/       — effective tier decay after 30d without cross-validation
+  version/          — single source of truth for App + ADR version strings
 proto/mrmi/v1/      — protobuf contracts
 configs/            — operator TOML configs
 docs/               — ADR, sprint plans, operator guides

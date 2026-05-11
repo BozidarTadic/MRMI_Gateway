@@ -126,48 +126,151 @@ The `internal/integration` package spins up nodes in-process on random ports and
 go test ./internal/integration/... -v
 ```
 
-Expected output:
+Expected output (all 16 tests):
 
 ```
-=== RUN   TestTwoNodeLocalCorridor
---- PASS: TestTwoNodeLocalCorridor
-=== RUN   TestTwoNodeAuditRootsAreIndependent
---- PASS: TestTwoNodeAuditRootsAreIndependent
 === RUN   TestMTLS_RoundTrip
 --- PASS: TestMTLS_RoundTrip
 === RUN   TestMTLS_InsecureClientRejected
 --- PASS: TestMTLS_InsecureClientRejected
+=== RUN   TestSigning_ValidSignatureAllowed
+--- PASS: TestSigning_ValidSignatureAllowed
+=== RUN   TestSigning_TamperedPayloadRejected
+--- PASS: TestSigning_TamperedPayloadRejected
+=== RUN   TestSigning_MissingSignatureRejected
+--- PASS: TestSigning_MissingSignatureRejected
+=== RUN   TestTrustTier_BelowMinimum_AuditEntry
+--- PASS: TestTrustTier_BelowMinimum_AuditEntry
+=== RUN   TestTrustTier_AtMinimum_Allowed
+--- PASS: TestTrustTier_AtMinimum_Allowed
+=== RUN   TestCRL_RevokedNodeDenied
+--- PASS: TestCRL_RevokedNodeDenied
+=== RUN   TestCRL_SingleSigNotRevoked
+--- PASS: TestCRL_SingleSigNotRevoked
+=== RUN   TestCRL_Merge_PropagatesRevocation
+--- PASS: TestCRL_Merge_PropagatesRevocation
+=== RUN   TestDummyTraffic_AuditEntry
+--- PASS: TestDummyTraffic_AuditEntry
+=== RUN   TestDummyTraffic_NotForwarded
+--- PASS: TestDummyTraffic_NotForwarded
+=== RUN   TestTwoNodeLocalCorridor
+--- PASS: TestTwoNodeLocalCorridor
+=== RUN   TestTwoNodeAuditRootsAreIndependent
+--- PASS: TestTwoNodeAuditRootsAreIndependent
 === RUN   TestTwoNodeForwardingCorridor
 --- PASS: TestTwoNodeForwardingCorridor
 === RUN   TestDLQAfterExhaustedRetries
 --- PASS: TestDLQAfterExhaustedRetries
 ```
 
-`TestTwoNodeLocalCorridor` verifies:
+**Sprint 2 tests** (`two_node_test.go`):
 
-1. RS node accepts an RS→RU envelope and returns `ALLOW` with a non-zero audit root hash.
-2. Replaying the same `idempotency_key` to RS returns `DUPLICATE` and advances the audit root.
-3. The same `idempotency_key` sent to the **RU** node returns `ALLOW` — each node has an independent dedup store.
-4. A route not present in RU's allow-list (→US) returns `DENY`.
+- `TestTwoNodeLocalCorridor` — ALLOW, DUPLICATE, independent dedup, DENY for out-of-policy region.
+- `TestTwoNodeAuditRootsAreIndependent` — two nodes produce separate Merkle chains.
+- `TestMTLS_RoundTrip` — mTLS with self-signed certs; mutual authentication passes.
+- `TestMTLS_InsecureClientRejected` — client with no cert is rejected by mTLS server.
+- `TestTwoNodeForwardingCorridor` — RS receives ALLOW, forwards to RU, RU's audit log gains one entry, RS response carries `peer_audit_root_hash`.
+- `TestDLQAfterExhaustedRetries` — unreachable peer; 3 envelopes → DLQ ≥3, local decision still ALLOW.
 
-`TestTwoNodeAuditRootsAreIndependent` confirms the two Merkle chains never share a root hash, and each chain passes `Verify()`.
+**Sprint 3 tests** (`sprint3_test.go`):
 
-`TestMTLS_RoundTrip` starts a node with self-signed mTLS certs and verifies a full round-trip with a mutually authenticated client.
+- `TestSigning_ValidSignatureAllowed` — Ed25519-signed envelope passes verification and is ALLOW'd.
+- `TestSigning_TamperedPayloadRejected` — payload modified after signing → DENY / INVALID_SIGNATURE.
+- `TestSigning_MissingSignatureRejected` — no signature sent → DENY / INVALID_SIGNATURE.
+- `TestTrustTier_BelowMinimum_AuditEntry` — T0 envelope to node with `min_trust_tier=1` → DENY, audit entry has `reason=TRUST_TIER_BELOW_MINIMUM` and `trust_tier=0`.
+- `TestTrustTier_AtMinimum_Allowed` — envelope at exactly `min_trust_tier` is ALLOW'd.
+- `TestCRL_RevokedNodeDenied` — 2-signature CRL entry → DENY / NODE_REVOKED.
+- `TestCRL_SingleSigNotRevoked` — 1-signature CRL entry does not revoke the node.
+- `TestCRL_Merge_PropagatesRevocation` — gossip merge of 2-sig entry from peer → NODE_REVOKED on local node.
+- `TestDummyTraffic_AuditEntry` — IsDummy=true bypasses `min_trust_tier=3`, logged as ALLOW/DUMMY.
+- `TestDummyTraffic_NotForwarded` — dummy envelope on RS is not forwarded to RU peer; RS has ALLOW/DUMMY, RU has 0 entries.
 
-`TestMTLS_InsecureClientRejected` confirms that a client presenting no certificate is rejected by an mTLS server.
+## Sprint 3 features
 
-`TestTwoNodeForwardingCorridor` wires RS→RU forwarding in-process:
+### Ed25519 envelope signing
 
-1. RS receives an RS→RU envelope, evaluates ALLOW locally.
-2. RS forwards the envelope to the RU node via gRPC.
-3. RU's audit log gains one ALLOW entry.
-4. RS response includes `peer_audit_root_hash` from RU.
+Every node signs outgoing envelopes with an Ed25519 private key. Receiving nodes configured with `NewAdapterWithVerify` reject envelopes whose signature does not match.
 
-`TestDLQAfterExhaustedRetries` confirms that forwarding failures write to the DLQ:
+**Dev mode (default):** an ephemeral key is generated at startup and a warning is logged:
 
-1. RS is configured with an unreachable peer address.
-2. Three envelopes are sent; each fails immediately (1 attempt, no backoff).
-3. The DLQ has ≥ 3 entries; the local RS response still returns `ALLOW`.
+```
+[identity] using ephemeral Ed25519 signing key — set signing_key in [tls] for a persistent key
+```
+
+Ephemeral keys are sufficient for local testing. Each process restart generates a new key, so two nodes in the same dev corridor accept each other's envelopes by default (no verification enforced at the transport layer unless you call `NewAdapterWithVerify`).
+
+**Production mode:** place a persistent Ed25519 key at a path known to both nodes. A `mrmi keygen` CLI is planned for Sprint 4. Until then, generate a key with:
+
+```bash
+openssl genpkey -algorithm ed25519 -out certs/node.ed25519.key
+openssl pkey -in certs/node.ed25519.key -pubout -out certs/node.ed25519.pub
+```
+
+### Trust tier configuration
+
+Set a minimum trust tier for inbound envelopes in `[policy.inbound]`:
+
+```toml
+[policy.inbound]
+min_trust_tier = 1   # reject T0 (anonymous) senders
+```
+
+Valid tiers: `0` (anonymous), `1` (registered), `2` (verified), `3` (legal entity). The default is `0` (accept all).
+
+Envelopes that fall below the minimum produce a `DENY` audit entry with `reason = "TRUST_TIER_BELOW_MINIMUM"` and the sender's tier value. The value is visible in the audit log's `trust_tier` field.
+
+To test a tier violation locally:
+
+```bash
+# Start RU with min_trust_tier = 1 (edit node.ru.local.toml or use a test config)
+# Send a T0 envelope from RS and observe the DENY decision on the RU audit log
+curl http://localhost:8081/.well-known/mrmi-audit   # root_hash advances after DENY
+```
+
+### CRL and node revocation
+
+The CRL store holds revocation entries for individual nodes. An entry is **effective** only when it carries ≥2 independent signatures (quorum). Single-signature entries are accepted but do not revoke the node.
+
+**Revoke a node (programmatically in tests):**
+
+```go
+store := crl.New()
+store.Revoke("ru-node-01", "compromised key", []byte("sig-alpha"))
+store.Revoke("ru-node-01", "compromised key", []byte("sig-beta"))
+// store.IsRevoked("ru-node-01") == true
+```
+
+**Gossip merge:** CRL entries propagate between nodes via `store.Merge(peer.Entries())`. Once a merged store reaches quorum (≥2 sigs), the node is treated as revoked.
+
+Revoked envelopes are denied with `reason = "NODE_REVOKED"` before any region-policy evaluation.
+
+### Trust decay timer
+
+The `trustdecay` package reduces a peer's effective tier by 1 if no cross-validation has been recorded within the decay window (default 30 days).
+
+The timer runs automatically in the background. In production, call `timer.RecordValidation(peerID)` whenever a successful mutual authentication completes. During local dev the decay window is far enough in the future that it has no effect.
+
+### Dummy traffic generator
+
+Enable dummy traffic with any profile that has a non-zero `DummyTrafficRate`:
+
+| Profile | Rate |
+|---|---|
+| `strict` | 1 envelope / 5 s / peer |
+| `balanced` | 1 envelope / 60 s / peer |
+| `performance` | disabled |
+
+Dummy envelopes are indistinguishable from real traffic on the wire (same padding, same timing jitter). On the receiving node they are logged as `ALLOW/DUMMY` in the audit log and are **not** forwarded further.
+
+To observe dummy traffic in the two-node setup:
+
+1. Start both nodes with the `strict` profile.
+2. Wait 5–10 seconds.
+3. Check the RU audit log — it will contain `ALLOW/DUMMY` entries from RS's generator.
+
+```bash
+curl http://localhost:8081/.well-known/mrmi-audit   # root_hash advances as dummy envelopes arrive
+```
 
 ## Run the full test suite
 
@@ -187,53 +290,3 @@ All packages must pass before any changes are merged.
 
 `node.balanced.toml` and `node.rs.local.toml` are equivalent. The `.local.toml` variants are the canonical configs for the two-node corridor scenario.
 
----
-
-## Coming in Sprint 3
-
-The following features are in active development and will be documented here once delivered.
-
-### Ed25519 envelope signing
-
-Each node will sign every outgoing envelope with its Ed25519 private key. The receiving node verifies the signature before policy evaluation. Key setup:
-
-```toml
-# [tls] section — add signing key path
-[tls]
-signing_key = "certs/node.ed25519.key"
-```
-
-When `signing_key` is not set, a dev-mode ephemeral key is generated at startup (logged as a warning). Use `mrmi keygen` (Sprint 4) to generate a persistent key pair.
-
-### Trust tier configuration
-
-Set a minimum trust tier for inbound envelopes in `[policy.inbound]`:
-
-```toml
-[policy.inbound]
-min_trust_tier = 1   # reject T0 (anonymous) senders
-```
-
-Violations produce a `DENY` audit entry with `reason = "TRUST_TIER_BELOW_MINIMUM"` and the sender's tier value.
-
-### CRL and revocation
-
-Revoke a node by posting a CRL entry via the `ShareCRL` gRPC method. An entry becomes effective after ≥2 T2+ node signatures are collected via gossip. Revoked nodes are denied at the policy layer:
-
-```
-decision: DENY
-reason: NODE_REVOKED
-```
-
-### Dummy traffic
-
-Enable dummy traffic for traffic-analysis resistance:
-
-```toml
-[profile]
-name = "balanced"   # dummy rate: 1 msg / 60s / peer
-# name = "strict"   # dummy rate: 1 msg / 5s / peer
-# name = "performance"  # disabled
-```
-
-Dummy envelopes appear in the audit log as `ALLOW/DUMMY` and are not delivered to the application.
