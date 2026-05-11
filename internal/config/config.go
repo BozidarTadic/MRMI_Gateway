@@ -85,6 +85,7 @@ type AuditPolicy struct {
 // region code (e.g. "RU"). For alliance peers the key is the alliance_id; Regions
 // lists every region the peer serves. For global peers the key is any unique name.
 type PeerConfig struct {
+	Region    string   // populated from map key during parsing
 	Addr      string   // gRPC dial address
 	NodeScope string   // "regional" | "alliance" | "global"
 	Regions   []string // non-empty only for alliance peers
@@ -394,6 +395,7 @@ func (r rawTOML) apply(cfg *Config) {
 		cfg.Network.Peers = make(map[string]PeerConfig, len(r.Peers))
 		for k, v := range r.Peers {
 			cfg.Network.Peers[k] = PeerConfig{
+				Region:    k,
 				Addr:      v.Addr,
 				NodeScope: v.NodeScope,
 				Regions:   v.Regions,

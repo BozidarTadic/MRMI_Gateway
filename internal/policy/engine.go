@@ -5,11 +5,13 @@ import (
 
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/crl"
 )
 
 type Engine struct {
-	cfg   config.Config
-	audit *audit.Log
+	cfg      config.Config
+	audit    *audit.Log
+	crlStore *crl.Store
 }
 
 type Decision string
@@ -19,7 +21,10 @@ const (
 	DecisionDeny  Decision = "DENY"
 )
 
+const ReasonTrustTierBelowMinimum = "TRUST_TIER_BELOW_MINIMUM"
+
 type Request struct {
+	SenderNodeID    string
 	SenderRegion    string
 	RecipientRegion string
 	TrustTier       uint32
@@ -31,19 +36,29 @@ type Result struct {
 	Profile  string
 }
 
-func NewEngine(cfg config.Config, auditLog *audit.Log) (*Engine, error) {
+func NewEngine(cfg config.Config, auditLog *audit.Log, crlStore *crl.Store) (*Engine, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
-	return &Engine{cfg: cfg, audit: auditLog}, nil
+	return &Engine{cfg: cfg, audit: auditLog, crlStore: crlStore}, nil
 }
 
 func (e *Engine) Evaluate(req Request) Result {
+	if e.crlStore != nil && e.crlStore.IsRevoked(req.SenderNodeID) {
+		result := Result{
+			Decision: DecisionDeny,
+			Reason:   "NODE_REVOKED",
+			Profile:  e.cfg.Profile.Name,
+		}
+		e.appendAudit(result, req)
+		return result
+	}
+
 	if req.TrustTier < e.cfg.Policy.Inbound.MinTrustTier {
 		result := Result{
 			Decision: DecisionDeny,
-			Reason:   "trust tier below minimum",
+			Reason:   ReasonTrustTierBelowMinimum,
 			Profile:  e.cfg.Profile.Name,
 		}
 		e.appendAudit(result, req)
@@ -53,7 +68,7 @@ func (e *Engine) Evaluate(req Request) Result {
 	if slices.Contains(e.cfg.Policy.Outbound.DenyTo, req.RecipientRegion) {
 		result := Result{
 			Decision: DecisionDeny,
-			Reason:   "recipient region denied by policy",
+			Reason:   "RECIPIENT_REGION_DENIED",
 			Profile:  e.cfg.Profile.Name,
 		}
 		e.appendAudit(result, req)
@@ -63,7 +78,7 @@ func (e *Engine) Evaluate(req Request) Result {
 	if len(e.cfg.Policy.Outbound.AllowTo) > 0 && !slices.Contains(e.cfg.Policy.Outbound.AllowTo, req.RecipientRegion) {
 		result := Result{
 			Decision: DecisionDeny,
-			Reason:   "recipient region not present in allow list",
+			Reason:   "RECIPIENT_REGION_NOT_IN_ALLOW_LIST",
 			Profile:  e.cfg.Profile.Name,
 		}
 		e.appendAudit(result, req)
@@ -72,7 +87,7 @@ func (e *Engine) Evaluate(req Request) Result {
 
 	result := Result{
 		Decision: DecisionAllow,
-		Reason:   "policy accepted request",
+		Reason:   "POLICY_ACCEPTED",
 		Profile:  e.cfg.Profile.Name,
 	}
 	e.appendAudit(result, req)
@@ -84,6 +99,5 @@ func (e *Engine) appendAudit(result Result, req Request) {
 		return
 	}
 
-	decision := audit.Decision(result.Decision)
-	e.audit.Append(e.cfg, decision, req.SenderRegion, req.RecipientRegion)
+	e.audit.Append(e.cfg, audit.Decision(result.Decision), result.Reason, req.TrustTier, req.SenderRegion, req.RecipientRegion)
 }

@@ -40,7 +40,7 @@ func startNode(t *testing.T, cfg config.Config) node {
 	t.Helper()
 
 	auditLog := audit.New()
-	engine, err := policy.NewEngine(cfg, auditLog)
+	engine, err := policy.NewEngine(cfg, auditLog, nil)
 	if err != nil {
 		t.Fatalf("startNode %s: policy engine: %v", cfg.Node.NodeID, err)
 	}
@@ -85,7 +85,7 @@ func startNodeFwd(t *testing.T, cfg config.Config, retryPolicy delivery.RetryPol
 	fwd := delivery.NewForwarderWithPolicy(cfg, dlq, send, retryPolicy)
 
 	auditLog := audit.New()
-	engine, err := policy.NewEngine(cfg, auditLog)
+	engine, err := policy.NewEngine(cfg, auditLog, nil)
 	if err != nil {
 		t.Fatalf("startNodeFwd %s: policy engine: %v", cfg.Node.NodeID, err)
 	}

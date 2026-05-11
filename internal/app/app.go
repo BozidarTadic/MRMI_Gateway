@@ -12,16 +12,29 @@ import (
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/core"
+	"MRMI_Gateway/internal/crl"
 	"MRMI_Gateway/internal/dedup"
 	"MRMI_Gateway/internal/delivery"
 	"MRMI_Gateway/internal/dnstxt"
+	"MRMI_Gateway/internal/dummy"
+	"MRMI_Gateway/internal/identity"
 	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/server"
+	"MRMI_Gateway/internal/session"
 	"MRMI_Gateway/internal/tlsutil"
+	"MRMI_Gateway/internal/trustdecay"
 	grpctransport "MRMI_Gateway/internal/transport/grpc"
 )
 
 func Run(ctx context.Context, cfg config.Config) error {
+	signingKey, _, err := identity.GenerateKey()
+	if err != nil {
+		return fmt.Errorf("generate signing key: %w", err)
+	}
+	log.Printf("[identity] using ephemeral Ed25519 signing key — set signing_key in [tls] for a persistent key")
+
+	seqSend := session.New()
+
 	tlsCert := tlsutil.TLSConfig{
 		Cert:     cfg.TLS.Cert,
 		Key:      cfg.TLS.Key,
@@ -38,20 +51,28 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 
 	auditLog := audit.New()
-	engine, err := policy.NewEngine(cfg, auditLog)
+	crlStore := crl.New()
+	engine, err := policy.NewEngine(cfg, auditLog, crlStore)
 	if err != nil {
 		return fmt.Errorf("create policy engine: %w", err)
 	}
 
+	decayTimer := trustdecay.New(30 * 24 * time.Hour)
+	go decayTimer.Run(ctx)
+
 	dedupIndex := dedup.New(cfg.Profile.DedupTTL)
 	go runPurge(ctx, dedupIndex)
+
+	if cfg.Node.ApplicableLaw == "NONE" && cfg.Profile.Name != "performance" {
+		log.Printf("[warn] applicable_law is NONE on a %s profile node — set a real legal framework before production use", cfg.Profile.Name)
+	}
 
 	if cfg.Policy.Audit.DNSTXTPublish {
 		if cfg.Policy.Audit.DNSTXTInterval == 0 {
 			log.Printf("[dnstxt] dns_txt_publish=true but dns_txt_interval_s is 0, skipping publisher")
 		} else {
 			log.Printf("[dnstxt] no DNS provider configured; audit root hash will be emitted to stdout")
-			p := dnstxt.New(cfg.Node.NodeID, cfg.Policy.Audit.DNSTXTInterval, os.Stdout)
+			p := dnstxt.New(cfg.Node.NodeID, cfg.Node.ApplicableLaw, cfg.Policy.Audit.DNSTXTInterval, os.Stdout)
 			go p.Run(ctx, auditLog.RootHash)
 		}
 	}
@@ -60,6 +81,9 @@ func Run(ctx context.Context, cfg config.Config) error {
 	var fwd core.Forwarder
 	if len(cfg.Network.Peers) > 0 {
 		fwd = delivery.NewForwarder(cfg, dlq, func(ctx context.Context, addr string, env core.Envelope) (string, error) {
+			env.SequenceNumber = seqSend.NextSeq(env.RecipientRegion)
+			env.Signature = identity.Sign(signingKey, env)
+
 			dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 			client, err := grpctransport.Dial(dialCtx, addr, clientTLS)
@@ -70,6 +94,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 			resp, err := client.SendEnvelope(ctx, &grpctransport.SendEnvelopeRequest{
 				Envelope: grpctransport.Envelope{
 					IdempotencyKey:    env.IdempotencyKey,
+					SenderNodeID:      cfg.Node.NodeID,
 					SenderIdentity:    env.SenderIdentity,
 					RecipientIdentity: env.RecipientIdentity,
 					SenderRegion:      env.SenderRegion,
@@ -80,6 +105,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 					PaddedTo:          env.PaddedTo,
 					Timestamp:         env.Timestamp,
 					Signature:         env.Signature,
+					IsDummy:           env.IsDummy,
 				},
 			})
 			if err != nil {
@@ -93,6 +119,17 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 
 	gw := core.NewGateway(cfg, engine, auditLog, dedupIndex, fwd)
+
+	if len(cfg.Network.Peers) > 0 {
+		peers := make([]config.PeerConfig, 0, len(cfg.Network.Peers))
+		for _, p := range cfg.Network.Peers {
+			peers = append(peers, p)
+		}
+		gen := dummy.New(cfg)
+		go gen.Run(ctx, peers, func(env core.Envelope) {
+			_, _ = gw.SendEnvelope(ctx, core.SendRequest{Envelope: env})
+		})
+	}
 
 	httpServer := server.NewHTTPServer(cfg, engine, auditLog)
 	grpcServer, err := grpctransport.NewServer(cfg.Network.GRPCListenAddr, grpctransport.NewAdapter(gw), serverTLS)

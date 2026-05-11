@@ -17,7 +17,7 @@ func TestClientServerRoundTrip(t *testing.T) {
 	cfg.Network.GRPCListenAddr = ":0"
 
 	auditLog := audit.New()
-	engine, err := policy.NewEngine(cfg, auditLog)
+	engine, err := policy.NewEngine(cfg, auditLog, nil)
 	if err != nil {
 		t.Fatalf("create policy engine: %v", err)
 	}

@@ -2,29 +2,67 @@ package grpctransport
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
+	"log"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"MRMI_Gateway/internal/core"
+	"MRMI_Gateway/internal/identity"
+	"MRMI_Gateway/internal/session"
 )
 
 // gatewayAdapter implements GatewayService by delegating to core.Gateway.
 // It is the only place that translates between gRPC transport types and domain types.
 type gatewayAdapter struct {
-	gw *core.Gateway
+	gw        *core.Gateway
+	seqRecv   *session.Tracker
+	verifyKey ed25519.PublicKey // nil = skip verification (insecure mode)
 }
 
 // NewAdapter wraps a core.Gateway so it satisfies the GatewayService interface.
+// Pass a non-nil verifyKey to enforce Ed25519 signature verification on inbound envelopes.
 func NewAdapter(gw *core.Gateway) GatewayService {
-	return &gatewayAdapter{gw: gw}
+	return &gatewayAdapter{gw: gw, seqRecv: session.New()}
+}
+
+// NewAdapterWithVerify wraps a core.Gateway with a public key for signature verification.
+func NewAdapterWithVerify(gw *core.Gateway, verifyKey ed25519.PublicKey) GatewayService {
+	return &gatewayAdapter{gw: gw, seqRecv: session.New(), verifyKey: verifyKey}
 }
 
 func (a *gatewayAdapter) SendEnvelope(ctx context.Context, req *SendEnvelopeRequest) (*SendEnvelopeResponse, error) {
+	if req.Envelope.SequenceNumber > 0 {
+		if err := a.seqRecv.Validate(req.Envelope.SenderRegion, req.Envelope.SequenceNumber); err != nil {
+			log.Printf("[session] %v", err)
+		}
+	}
+
+	if a.verifyKey != nil {
+		env := core.Envelope{
+			IdempotencyKey:  req.Envelope.IdempotencyKey,
+			SenderRegion:    req.Envelope.SenderRegion,
+			RecipientRegion: req.Envelope.RecipientRegion,
+			TrustTier:       req.Envelope.TrustTier,
+			SequenceNumber:  req.Envelope.SequenceNumber,
+			Payload:         req.Envelope.Payload,
+			PaddedTo:        req.Envelope.PaddedTo,
+			Timestamp:       req.Envelope.Timestamp,
+		}
+		if err := identity.Verify(a.verifyKey, env, req.Envelope.Signature); err != nil {
+			return &SendEnvelopeResponse{
+				Decision: "DENY",
+				Reason:   "INVALID_SIGNATURE",
+			}, nil
+		}
+	}
+
 	resp, err := a.gw.SendEnvelope(ctx, core.SendRequest{
 		Envelope: core.Envelope{
 			IdempotencyKey:    req.Envelope.IdempotencyKey,
+			SenderNodeID:      req.Envelope.SenderNodeID,
 			SenderIdentity:    req.Envelope.SenderIdentity,
 			RecipientIdentity: req.Envelope.RecipientIdentity,
 			SenderRegion:      req.Envelope.SenderRegion,
@@ -35,6 +73,7 @@ func (a *gatewayAdapter) SendEnvelope(ctx context.Context, req *SendEnvelopeRequ
 			PaddedTo:          req.Envelope.PaddedTo,
 			Timestamp:         req.Envelope.Timestamp,
 			Signature:         req.Envelope.Signature,
+			IsDummy:           req.Envelope.IsDummy,
 		},
 	})
 	if err != nil {

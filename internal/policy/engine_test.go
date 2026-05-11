@@ -19,7 +19,7 @@ func baseConfig() config.Config {
 func newEngine(t *testing.T, cfg config.Config) (*Engine, *audit.Log) {
 	t.Helper()
 	log := audit.New()
-	engine, err := NewEngine(cfg, log)
+	engine, err := NewEngine(cfg, log, nil)
 	if err != nil {
 		t.Fatalf("NewEngine: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestEvaluate_TrustTierBelowMinimumRejected(t *testing.T) {
 	if result.Decision != DecisionDeny {
 		t.Fatalf("expected DENY for trust tier below minimum, got %q", result.Decision)
 	}
-	if result.Reason != "trust tier below minimum" {
+	if result.Reason != ReasonTrustTierBelowMinimum {
 		t.Fatalf("unexpected reason %q", result.Reason)
 	}
 }

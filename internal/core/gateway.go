@@ -32,6 +32,7 @@ const (
 
 type Envelope struct {
 	IdempotencyKey    string
+	SenderNodeID      string // node that forwarded this envelope; used for CRL check
 	SenderIdentity    []byte
 	RecipientIdentity []byte
 	SenderRegion      string
@@ -42,6 +43,7 @@ type Envelope struct {
 	PaddedTo          uint32
 	Timestamp         int64
 	Signature         []byte
+	IsDummy           bool
 }
 
 type SendRequest struct {
@@ -90,9 +92,21 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 		return SendResponse{}, ErrEmptyIdempotencyKey
 	}
 
-	if g.dedup.SeenOrAdd(req.Envelope.IdempotencyKey) {
-		g.audit.Append(g.cfg, audit.DecisionDuplicate,
+	if req.Envelope.IsDummy {
+		g.audit.Append(g.cfg, audit.DecisionDummy, "DUMMY_TRAFFIC", 0,
 			req.Envelope.SenderRegion, req.Envelope.RecipientRegion)
+		return SendResponse{
+			Decision:      DecisionAllow,
+			Reason:        "DUMMY_TRAFFIC",
+			Profile:       g.cfg.Profile.Name,
+			NodeID:        g.cfg.Node.NodeID,
+			AuditRootHash: g.audit.RootHash(),
+		}, nil
+	}
+
+	if g.dedup.SeenOrAdd(req.Envelope.IdempotencyKey) {
+		g.audit.Append(g.cfg, audit.DecisionDuplicate, "DUPLICATE_IDEMPOTENCY_KEY",
+			req.Envelope.TrustTier, req.Envelope.SenderRegion, req.Envelope.RecipientRegion)
 		return SendResponse{
 			Decision:      DecisionDuplicate,
 			Reason:        "idempotency_key already processed",
@@ -103,6 +117,7 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 	}
 
 	result := g.policy.Evaluate(policy.Request{
+		SenderNodeID:    req.Envelope.SenderNodeID,
 		SenderRegion:    req.Envelope.SenderRegion,
 		RecipientRegion: req.Envelope.RecipientRegion,
 		TrustTier:       req.Envelope.TrustTier,

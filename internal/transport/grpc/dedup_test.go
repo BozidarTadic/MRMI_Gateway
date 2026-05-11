@@ -22,7 +22,7 @@ func startTestServer(t *testing.T) (addr string, client *Client) {
 
 	cfg := config.DefaultBalancedConfig()
 	auditLog := audit.New()
-	engine, err := policy.NewEngine(cfg, auditLog)
+	engine, err := policy.NewEngine(cfg, auditLog, nil)
 	if err != nil {
 		t.Fatalf("create policy engine: %v", err)
 	}

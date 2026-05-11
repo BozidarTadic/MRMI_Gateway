@@ -18,7 +18,7 @@ func setupAuditServer(t *testing.T, cfg config.Config) (*Client, *audit.Log) {
 	t.Helper()
 
 	auditLog := audit.New()
-	engine, err := policy.NewEngine(cfg, auditLog)
+	engine, err := policy.NewEngine(cfg, auditLog, nil)
 	if err != nil {
 		t.Fatalf("create policy engine: %v", err)
 	}

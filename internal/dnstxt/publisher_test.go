@@ -10,7 +10,7 @@ import (
 
 func TestPublisher_EmitFormat(t *testing.T) {
 	var buf bytes.Buffer
-	p := New("test-node", 50*time.Millisecond, &buf)
+	p := New("test-node", "RS-GDPR", 50*time.Millisecond, &buf)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	p.Run(ctx, func() string { return "sha256:abc123" })
@@ -28,11 +28,14 @@ func TestPublisher_EmitFormat(t *testing.T) {
 	if !strings.Contains(line, "node=test-node") {
 		t.Fatalf("missing node id in output: %q", line)
 	}
+	if !strings.Contains(line, "law=RS-GDPR") {
+		t.Fatalf("missing applicable_law in output: %q", line)
+	}
 }
 
 func TestPublisher_StopsOnContextCancel(t *testing.T) {
 	var buf bytes.Buffer
-	p := New("test-node", time.Hour, &buf)
+	p := New("test-node", "RS-GDPR", time.Hour, &buf)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	done := make(chan struct{})
@@ -52,7 +55,7 @@ func TestPublisher_StopsOnContextCancel(t *testing.T) {
 
 func TestPublisher_MultipleEmits(t *testing.T) {
 	var buf bytes.Buffer
-	p := New("n1", 30*time.Millisecond, &buf)
+	p := New("n1", "NONE", 30*time.Millisecond, &buf)
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 	p.Run(ctx, func() string { return "hash" })

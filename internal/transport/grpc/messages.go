@@ -2,6 +2,7 @@ package grpctransport
 
 type Envelope struct {
 	IdempotencyKey    string `json:"idempotency_key"`
+	SenderNodeID      string `json:"sender_node_id,omitempty"`
 	SenderIdentity    []byte `json:"sender_identity,omitempty"`
 	RecipientIdentity []byte `json:"recipient_identity,omitempty"`
 	SenderRegion      string `json:"sender_region"`
@@ -12,6 +13,7 @@ type Envelope struct {
 	PaddedTo          uint32 `json:"padded_to"`
 	Timestamp         int64  `json:"timestamp"`
 	Signature         []byte `json:"signature,omitempty"`
+	IsDummy           bool   `json:"is_dummy,omitempty"`
 }
 
 type SendEnvelopeRequest struct {

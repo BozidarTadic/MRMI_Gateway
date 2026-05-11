@@ -8,16 +8,17 @@ import (
 )
 
 // Publisher emits DNS TXT record values for audit root hash publication.
-// Format: v=1 ts=<unix> root=<root_hash> node=<node_id>
+// Format: v=1 ts=<unix> root=<root_hash> node=<node_id> law=<applicable_law>
 type Publisher struct {
-	nodeID   string
-	interval time.Duration
-	out      io.Writer
+	nodeID        string
+	applicableLaw string
+	interval      time.Duration
+	out           io.Writer
 }
 
 // New creates a Publisher that writes to out on each interval tick.
-func New(nodeID string, interval time.Duration, out io.Writer) *Publisher {
-	return &Publisher{nodeID: nodeID, interval: interval, out: out}
+func New(nodeID, applicableLaw string, interval time.Duration, out io.Writer) *Publisher {
+	return &Publisher{nodeID: nodeID, applicableLaw: applicableLaw, interval: interval, out: out}
 }
 
 // Run emits the DNS TXT value on each interval tick until ctx is cancelled.
@@ -30,8 +31,8 @@ func (p *Publisher) Run(ctx context.Context, rootHash func() string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			fmt.Fprintf(p.out, "v=1 ts=%d root=%s node=%s\n",
-				time.Now().Unix(), rootHash(), p.nodeID)
+			fmt.Fprintf(p.out, "v=1 ts=%d root=%s node=%s law=%s\n",
+				time.Now().Unix(), rootHash(), p.nodeID, p.applicableLaw)
 		}
 	}
 }

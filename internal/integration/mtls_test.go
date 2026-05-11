@@ -32,7 +32,7 @@ func startMTLSNode(t *testing.T, cfg config.Config, certPath, keyPath, caPath st
 	}
 
 	auditLog := audit.New()
-	engine, err := policy.NewEngine(cfg, auditLog)
+	engine, err := policy.NewEngine(cfg, auditLog, nil)
 	if err != nil {
 		t.Fatalf("policy engine: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestMTLS_InsecureClientRejected(t *testing.T) {
 	}
 
 	auditLog := audit.New()
-	engine, err := policy.NewEngine(cfg, auditLog)
+	engine, err := policy.NewEngine(cfg, auditLog, nil)
 	if err != nil {
 		t.Fatalf("policy engine: %v", err)
 	}

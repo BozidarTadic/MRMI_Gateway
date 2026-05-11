@@ -25,7 +25,7 @@ func newTestGateway(t *testing.T, profileName string) (*Gateway, *captureForward
 	t.Helper()
 	cfg := config.DefaultConfigForProfile(profileName)
 	auditLog := audit.New()
-	engine, err := policy.NewEngine(cfg, auditLog)
+	engine, err := policy.NewEngine(cfg, auditLog, nil)
 	if err != nil {
 		t.Fatalf("policy engine: %v", err)
 	}

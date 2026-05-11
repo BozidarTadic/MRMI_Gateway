@@ -17,21 +17,24 @@ const (
 	DecisionAllow     Decision = "ALLOW"
 	DecisionDeny      Decision = "DENY"
 	DecisionDuplicate Decision = "DUPLICATE"
+	DecisionDummy     Decision = "ALLOW/DUMMY"
 )
 
 type Entry struct {
 	Seq             uint64   `json:"seq"`
 	Timestamp       int64    `json:"timestamp"`
 	Decision        Decision `json:"decision"`
+	Reason          string   `json:"reason,omitempty"`
+	TrustTier       uint32   `json:"trust_tier"`
 	SenderRegion    string   `json:"sender_region"`
 	RecipientRegion string   `json:"recipient_region"`
 	PolicyVersion   string   `json:"policy_version"`
 	Profile         string   `json:"profile"`
 	ApplicableLaw   string   `json:"applicable_law"`
 	DedupTTLHours   uint64   `json:"dedup_ttl_hours"`
-	NodeScope       string   `json:"node_scope"`        // "regional" | "alliance" | "global"
-	AllianceID      string   `json:"alliance_id"`       // non-empty only for alliance nodes
-	NodeRegion      string   `json:"node_region"`       // physical region of the node
+	NodeScope       string   `json:"node_scope"`
+	AllianceID      string   `json:"alliance_id"`
+	NodeRegion      string   `json:"node_region"`
 	PreviousHash    string   `json:"previous_hash"`
 	EntryHash       string   `json:"entry_hash"`
 }
@@ -48,7 +51,7 @@ func New() *Log {
 	}
 }
 
-func (l *Log) Append(cfg config.Config, decision Decision, senderRegion, recipientRegion string) Entry {
+func (l *Log) Append(cfg config.Config, decision Decision, reason string, trustTier uint32, senderRegion, recipientRegion string) Entry {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -57,6 +60,8 @@ func (l *Log) Append(cfg config.Config, decision Decision, senderRegion, recipie
 		Seq:             uint64(len(l.entries) + 1),
 		Timestamp:       time.Now().UnixMilli(),
 		Decision:        decision,
+		Reason:          reason,
+		TrustTier:       trustTier,
 		SenderRegion:    senderRegion,
 		RecipientRegion: recipientRegion,
 		PolicyVersion:   cfg.Node.PolicyVersion,
@@ -122,6 +127,8 @@ func hashEntry(entry Entry) string {
 		Seq             uint64   `json:"seq"`
 		Timestamp       int64    `json:"timestamp"`
 		Decision        Decision `json:"decision"`
+		Reason          string   `json:"reason,omitempty"`
+		TrustTier       uint32   `json:"trust_tier"`
 		SenderRegion    string   `json:"sender_region"`
 		RecipientRegion string   `json:"recipient_region"`
 		PolicyVersion   string   `json:"policy_version"`
@@ -136,6 +143,8 @@ func hashEntry(entry Entry) string {
 		Seq:             entry.Seq,
 		Timestamp:       entry.Timestamp,
 		Decision:        entry.Decision,
+		Reason:          entry.Reason,
+		TrustTier:       entry.TrustTier,
 		SenderRegion:    entry.SenderRegion,
 		RecipientRegion: entry.RecipientRegion,
 		PolicyVersion:   entry.PolicyVersion,
