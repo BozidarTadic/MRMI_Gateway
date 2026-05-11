@@ -103,7 +103,42 @@ message GetNodeInfoResponse {
   string node_scope = 5;
 }
 
+message DiscoveryRequest {
+  string query_hash = 1;       // SHA-256 of identifier; plaintext never leaves the App
+  string query_type = 2;       // "phone" | "email" | "username"
+  string origin_node_id = 3;
+  string origin_app_id = 4;
+  uint32 hop_limit = 5;        // node decrements before forwarding; drop when 0
+  string request_id = 6;       // UUID v7; dedup for broadcast storms
+  int64 timestamp = 7;         // unix_ms; stale requests rejected after 30s
+}
+
+message DiscoveryResponse {
+  string node_id = 1;
+  string app_id = 2;
+  string opaque_token = 3;     // single-use, expires after handshake or TTL
+  string display_hint = 4;     // app-controlled display name
+  string match_type = 5;       // "exact" | "partial"
+  int64 token_expires = 6;     // unix_ms
+}
+
+message ConnectRequest {
+  string opaque_token = 1;     // token from DiscoveryResponse
+  string origin_node_id = 2;
+  string origin_app_id = 3;
+  string request_id = 4;       // UUID for idempotency
+}
+
+message ConnectAck {
+  string status = 1;           // "ACCEPTED" | "PENDING" | "DENIED"
+  string session_id = 2;
+  int64 expires_at = 3;        // unix_ms; 0 when PENDING or DENIED
+  string reason = 4;
+}
+
 service GatewayService {
   rpc SendEnvelope(SendEnvelopeRequest) returns (SendEnvelopeResponse);
   rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+  rpc BroadcastDiscovery(DiscoveryRequest) returns (DiscoveryResponse);
+  rpc Connect(ConnectRequest) returns (ConnectAck);
 }

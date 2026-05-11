@@ -7,6 +7,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"MRMI_Gateway/internal/discovery"
 )
 
 type Client struct {
@@ -63,4 +65,57 @@ func (c *Client) ShareRootHash(ctx context.Context, request *RootHashMessage) (*
 		return nil, err
 	}
 	return response, nil
+}
+
+func (c *Client) BroadcastDiscovery(ctx context.Context, request *DiscoveryRequest) (*DiscoveryResponse, error) {
+	response := new(DiscoveryResponse)
+	if err := c.conn.Invoke(ctx, "/mrmi.v1.GatewayService/BroadcastDiscovery", request, response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (c *Client) Connect(ctx context.Context, request *ConnectRequest) (*ConnectAck, error) {
+	response := new(ConnectAck)
+	if err := c.conn.Invoke(ctx, "/mrmi.v1.GatewayService/Connect", request, response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+// AsDiscoveryClient wraps this Client so it satisfies discovery.PeerClient,
+// converting between grpc transport types and discovery domain types.
+func (c *Client) AsDiscoveryClient() discovery.PeerClient {
+	return &discoveryClientAdapter{c}
+}
+
+type discoveryClientAdapter struct {
+	c *Client
+}
+
+func (a *discoveryClientAdapter) BroadcastDiscovery(ctx context.Context, req *discovery.Request) (*discovery.Response, error) {
+	resp, err := a.c.BroadcastDiscovery(ctx, &DiscoveryRequest{
+		QueryHash:    req.QueryHash,
+		QueryType:    req.QueryType,
+		OriginNodeID: req.OriginNodeID,
+		OriginAppID:  req.OriginAppID,
+		HopLimit:     req.HopLimit,
+		RequestID:    req.RequestID,
+		Timestamp:    req.Timestamp,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &discovery.Response{
+		NodeID:       resp.NodeID,
+		AppID:        resp.AppID,
+		OpaqueToken:  resp.OpaqueToken,
+		DisplayHint:  resp.DisplayHint,
+		MatchType:    resp.MatchType,
+		TokenExpires: resp.TokenExpires,
+	}, nil
+}
+
+func (a *discoveryClientAdapter) Close() error {
+	return a.c.Close()
 }

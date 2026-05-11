@@ -13,13 +13,14 @@ func DefaultBalancedConfig() Config {
 func DefaultConfigForProfile(name string) Config {
 	cfg := Config{
 		Node: NodeConfig{
-			NodeID:        "rs-node-01",
-			NodeScope:     "regional",
-			Region:        "RS",
-			OperatorID:    "example-operator",
-			PolicyVersion: version.App,
-			ApplicableLaw: "RS-GDPR",
-			SignedBy:      "ed25519:REPLACE_ME",
+			NodeID:            "rs-node-01",
+			NodeScope:         "regional",
+			Region:            "RS",
+			OperatorID:        "example-operator",
+			PolicyVersion:     version.App,
+			ApplicableLaw:     "RS-GDPR",
+			SignedBy:          "ed25519:REPLACE_ME",
+			DiscoveryTokenTTL: 5 * time.Minute,
 		},
 		Policy: PolicyConfig{
 			Outbound: OutboundPolicy{
@@ -37,6 +38,12 @@ func DefaultConfigForProfile(name string) Config {
 				DNSTXTPublish:    true,
 				DNSTXTInterval:   6 * time.Hour,
 				HTTPSWellKnown:   true,
+			},
+			Discovery: DiscoveryPolicy{
+				AppIsolation: "SAME_APP_ONLY",
+			},
+			Connect: ConnectPolicy{
+				AutoAccept: "MANUAL",
 			},
 		},
 		Network: NetworkConfig{

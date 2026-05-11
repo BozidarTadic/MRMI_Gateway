@@ -12,6 +12,8 @@ type GatewayService interface {
 	SendEnvelope(context.Context, *SendEnvelopeRequest) (*SendEnvelopeResponse, error)
 	GetNodeInfo(context.Context, *GetNodeInfoRequest) (*GetNodeInfoResponse, error)
 	ShareRootHash(context.Context, *RootHashMessage) (*RootHashAck, error)
+	BroadcastDiscovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error)
+	Connect(context.Context, *ConnectRequest) (*ConnectAck, error)
 }
 
 func RegisterGatewayService(server grpc.ServiceRegistrar, svc GatewayService) {
@@ -30,6 +32,14 @@ func RegisterGatewayService(server grpc.ServiceRegistrar, svc GatewayService) {
 			{
 				MethodName: "ShareRootHash",
 				Handler:    shareRootHashHandler(svc),
+			},
+			{
+				MethodName: "BroadcastDiscovery",
+				Handler:    broadcastDiscoveryHandler(svc),
+			},
+			{
+				MethodName: "Connect",
+				Handler:    connectHandler(svc),
 			},
 		},
 		Streams:  []grpc.StreamDesc{},
@@ -110,6 +120,58 @@ func shareRootHashHandler(svc GatewayService) grpc.MethodHandler {
 				return nil, status.Error(codes.Internal, "unexpected request type")
 			}
 			return svc.ShareRootHash(ctx, typed)
+		}
+		return interceptor(ctx, request, info, handler)
+	}
+}
+
+func broadcastDiscoveryHandler(svc GatewayService) grpc.MethodHandler {
+	return func(service any, ctx context.Context, decode func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+		request := new(DiscoveryRequest)
+		if err := decode(request); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "decode discovery request: %v", err)
+		}
+
+		if interceptor == nil {
+			return svc.BroadcastDiscovery(ctx, request)
+		}
+
+		info := &grpc.UnaryServerInfo{
+			Server:     service,
+			FullMethod: "/mrmi.v1.GatewayService/BroadcastDiscovery",
+		}
+		handler := func(ctx context.Context, req any) (any, error) {
+			typed, ok := req.(*DiscoveryRequest)
+			if !ok {
+				return nil, status.Error(codes.Internal, "unexpected request type")
+			}
+			return svc.BroadcastDiscovery(ctx, typed)
+		}
+		return interceptor(ctx, request, info, handler)
+	}
+}
+
+func connectHandler(svc GatewayService) grpc.MethodHandler {
+	return func(service any, ctx context.Context, decode func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+		request := new(ConnectRequest)
+		if err := decode(request); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "decode connect request: %v", err)
+		}
+
+		if interceptor == nil {
+			return svc.Connect(ctx, request)
+		}
+
+		info := &grpc.UnaryServerInfo{
+			Server:     service,
+			FullMethod: "/mrmi.v1.GatewayService/Connect",
+		}
+		handler := func(ctx context.Context, req any) (any, error) {
+			typed, ok := req.(*ConnectRequest)
+			if !ok {
+				return nil, status.Error(codes.Internal, "unexpected request type")
+			}
+			return svc.Connect(ctx, typed)
 		}
 		return interceptor(ctx, request, info, handler)
 	}

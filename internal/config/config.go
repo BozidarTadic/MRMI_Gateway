@@ -53,16 +53,17 @@ type TLSConfig struct {
 }
 
 type NodeConfig struct {
-	NodeID        string
-	NodeScope     string // "regional" | "alliance" | "global"
-	Region        string // physical region; required for regional and global nodes
-	Regions       []string // served regions; required for alliance nodes
-	AllianceID    string   // legal agreement reference; required for alliance nodes
-	Disclaimer    string   // e.g. "no-data-residency-claims"; used for global nodes
-	OperatorID    string
-	PolicyVersion string
-	ApplicableLaw string
-	SignedBy      string
+	NodeID              string
+	NodeScope           string // "regional" | "alliance" | "global"
+	Region              string // physical region; required for regional and global nodes
+	Regions             []string // served regions; required for alliance nodes
+	AllianceID          string   // legal agreement reference; required for alliance nodes
+	Disclaimer          string   // e.g. "no-data-residency-claims"; used for global nodes
+	OperatorID          string
+	PolicyVersion       string
+	ApplicableLaw       string
+	SignedBy            string
+	DiscoveryTokenTTL   time.Duration // TTL for opaque tokens issued during BroadcastDiscovery; default 5m
 }
 
 type ProfileConfig struct {
@@ -74,10 +75,26 @@ type ProfileConfig struct {
 }
 
 type PolicyConfig struct {
-	Outbound OutboundPolicy
-	Inbound  InboundPolicy
-	Audit    AuditPolicy
-	Routing  RoutingPolicy
+	Outbound  OutboundPolicy
+	Inbound   InboundPolicy
+	Audit     AuditPolicy
+	Routing   RoutingPolicy
+	Discovery DiscoveryPolicy
+	Connect   ConnectPolicy
+}
+
+// DiscoveryPolicy controls cross-app discovery isolation.
+type DiscoveryPolicy struct {
+	// AppIsolation is "SAME_APP_ONLY" | "WHITELIST" | "OPEN". Default: "SAME_APP_ONLY".
+	AppIsolation  string
+	AllowedAppIDs []string // used when AppIsolation is "WHITELIST"
+}
+
+// ConnectPolicy controls auto-accept behaviour for ConnectRequests.
+type ConnectPolicy struct {
+	// AutoAccept is "MANUAL" | "AUTO_WHITELIST" | "AUTO_MUTUAL" | "AUTO_ALL". Default: "MANUAL".
+	AutoAccept   string
+	TrustedNodes []string // node IDs trusted for AUTO_WHITELIST
 }
 
 type RoutingPolicy struct {
@@ -229,16 +246,17 @@ func (c Config) Validate() error {
 // TOML key names; apply() converts them to time.Duration.
 type rawTOML struct {
 	Node struct {
-		NodeID        string   `toml:"node_id"`
-		NodeScope     string   `toml:"node_scope"`
-		Region        string   `toml:"region"`
-		Regions       []string `toml:"regions"`
-		AllianceID    string   `toml:"alliance_id"`
-		Disclaimer    string   `toml:"disclaimer"`
-		OperatorID    string   `toml:"operator_id"`
-		PolicyVersion string   `toml:"policy_version"`
-		ApplicableLaw string   `toml:"applicable_law"`
-		SignedBy      string   `toml:"signed_by"`
+		NodeID                string   `toml:"node_id"`
+		NodeScope             string   `toml:"node_scope"`
+		Region                string   `toml:"region"`
+		Regions               []string `toml:"regions"`
+		AllianceID            string   `toml:"alliance_id"`
+		Disclaimer            string   `toml:"disclaimer"`
+		OperatorID            string   `toml:"operator_id"`
+		PolicyVersion         string   `toml:"policy_version"`
+		ApplicableLaw         string   `toml:"applicable_law"`
+		SignedBy              string   `toml:"signed_by"`
+		DiscoveryTokenTTLS    int      `toml:"discovery_token_ttl_s"`
 	} `toml:"node"`
 
 	Profile struct {
@@ -273,6 +291,14 @@ type rawTOML struct {
 		Routing struct {
 			AllowVia []string `toml:"allow_via"`
 		} `toml:"routing"`
+		Discovery struct {
+			AppIsolation  string   `toml:"app_isolation"`
+			AllowedAppIDs []string `toml:"allowed_app_ids"`
+		} `toml:"discovery"`
+		Connect struct {
+			AutoAccept   string   `toml:"auto_accept"`
+			TrustedNodes []string `toml:"trusted_nodes"`
+		} `toml:"connect"`
 	} `toml:"policy"`
 
 	Network struct {
@@ -352,6 +378,9 @@ func (r rawTOML) apply(cfg *Config) {
 	if v := strings.TrimSpace(r.Node.SignedBy); v != "" {
 		cfg.Node.SignedBy = v
 	}
+	if r.Node.DiscoveryTokenTTLS > 0 {
+		cfg.Node.DiscoveryTokenTTL = time.Duration(r.Node.DiscoveryTokenTTLS) * time.Second
+	}
 
 	cfg.Profile.Name = r.profileName()
 
@@ -403,6 +432,18 @@ func (r rawTOML) apply(cfg *Config) {
 	}
 	if r.Policy.Routing.AllowVia != nil {
 		cfg.Policy.Routing.AllowVia = r.Policy.Routing.AllowVia
+	}
+	if v := strings.TrimSpace(r.Policy.Discovery.AppIsolation); v != "" {
+		cfg.Policy.Discovery.AppIsolation = v
+	}
+	if r.Policy.Discovery.AllowedAppIDs != nil {
+		cfg.Policy.Discovery.AllowedAppIDs = r.Policy.Discovery.AllowedAppIDs
+	}
+	if v := strings.TrimSpace(r.Policy.Connect.AutoAccept); v != "" {
+		cfg.Policy.Connect.AutoAccept = v
+	}
+	if r.Policy.Connect.TrustedNodes != nil {
+		cfg.Policy.Connect.TrustedNodes = r.Policy.Connect.TrustedNodes
 	}
 
 	if v := strings.TrimSpace(r.Network.ListenAddr); v != "" {

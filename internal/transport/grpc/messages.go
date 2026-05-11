@@ -49,3 +49,36 @@ type RootHashMessage struct {
 type RootHashAck struct {
 	Accepted bool `json:"accepted"`
 }
+
+type DiscoveryRequest struct {
+	QueryHash    string `json:"query_hash"`
+	QueryType    string `json:"query_type"`
+	OriginNodeID string `json:"origin_node_id"`
+	OriginAppID  string `json:"origin_app_id"`
+	HopLimit     uint32 `json:"hop_limit"`
+	RequestID    string `json:"request_id"`
+	Timestamp    int64  `json:"timestamp"`
+}
+
+type DiscoveryResponse struct {
+	NodeID       string `json:"node_id"`
+	AppID        string `json:"app_id"`
+	OpaqueToken  string `json:"opaque_token"`
+	DisplayHint  string `json:"display_hint"`
+	MatchType    string `json:"match_type"`
+	TokenExpires int64  `json:"token_expires"`
+}
+
+type ConnectRequest struct {
+	OpaqueToken  string `json:"opaque_token"`
+	OriginNodeID string `json:"origin_node_id"`
+	OriginAppID  string `json:"origin_app_id"`
+	RequestID    string `json:"request_id"`
+}
+
+type ConnectAck struct {
+	Status    string `json:"status"`
+	SessionID string `json:"session_id,omitempty"`
+	ExpiresAt int64  `json:"expires_at,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+}

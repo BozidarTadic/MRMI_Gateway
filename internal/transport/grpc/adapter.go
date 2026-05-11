@@ -5,23 +5,35 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"log"
+	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/connect"
 	"MRMI_Gateway/internal/core"
+	"MRMI_Gateway/internal/discovery"
 	"MRMI_Gateway/internal/identity"
 	"MRMI_Gateway/internal/peercache"
+	"MRMI_Gateway/internal/policy"
 	"MRMI_Gateway/internal/session"
+	"MRMI_Gateway/internal/token"
 )
 
 // gatewayAdapter implements GatewayService by delegating to core.Gateway.
 // It is the only place that translates between gRPC transport types and domain types.
 type gatewayAdapter struct {
-	gw        *core.Gateway
-	seqRecv   *session.Tracker
-	verifyKey ed25519.PublicKey // nil = skip verification (insecure mode)
-	peerCache *peercache.Cache  // nil = no gossip storage
+	gw          *core.Gateway
+	seqRecv     *session.Tracker
+	verifyKey   ed25519.PublicKey   // nil = skip verification (insecure mode)
+	peerCache   *peercache.Cache    // nil = no gossip storage
+	tokenStore  *token.Store        // nil = discovery/connect disabled
+	broadcaster *discovery.Broadcaster // nil = no peer fan-out
+	connectRes  *connect.Resolver   // nil = always PENDING
+	policyEng   *policy.Engine      // nil = no isolation check
+	nodeCfg     config.Config
 }
 
 // NewAdapter wraps a core.Gateway so it satisfies the GatewayService interface.
@@ -38,6 +50,31 @@ func NewAdapterWithVerify(gw *core.Gateway, verifyKey ed25519.PublicKey) Gateway
 // an optional peer cache for root hash gossip storage.
 func NewAdapterFull(gw *core.Gateway, verifyKey ed25519.PublicKey, peerCache *peercache.Cache) GatewayService {
 	return &gatewayAdapter{gw: gw, seqRecv: session.New(), verifyKey: verifyKey, peerCache: peerCache}
+}
+
+// DiscoveryDeps groups the Sprint-7 dependencies for discovery and connect.
+type DiscoveryDeps struct {
+	TokenStore  *token.Store
+	Broadcaster *discovery.Broadcaster
+	ConnectRes  *connect.Resolver
+	PolicyEng   *policy.Engine
+	NodeCfg     config.Config
+}
+
+// NewAdapterWithDiscovery wraps a core.Gateway with all Sprint-7 discovery/connect
+// dependencies in addition to the standard gossip cache.
+func NewAdapterWithDiscovery(gw *core.Gateway, verifyKey ed25519.PublicKey, peerCache *peercache.Cache, deps DiscoveryDeps) GatewayService {
+	return &gatewayAdapter{
+		gw:          gw,
+		seqRecv:     session.New(),
+		verifyKey:   verifyKey,
+		peerCache:   peerCache,
+		tokenStore:  deps.TokenStore,
+		broadcaster: deps.Broadcaster,
+		connectRes:  deps.ConnectRes,
+		policyEng:   deps.PolicyEng,
+		nodeCfg:     deps.NodeCfg,
+	}
 }
 
 func (a *gatewayAdapter) SendEnvelope(ctx context.Context, req *SendEnvelopeRequest) (*SendEnvelopeResponse, error) {
@@ -118,4 +155,119 @@ func (a *gatewayAdapter) ShareRootHash(_ context.Context, req *RootHashMessage) 
 		a.peerCache.Store(req.NodeID, req.RootHash, req.Timestamp)
 	}
 	return &RootHashAck{Accepted: true}, nil
+}
+
+func (a *gatewayAdapter) BroadcastDiscovery(ctx context.Context, req *DiscoveryRequest) (*DiscoveryResponse, error) {
+	if a.tokenStore == nil {
+		return &DiscoveryResponse{}, nil
+	}
+
+	// Enforce app isolation policy before searching local registry.
+	if a.policyEng != nil {
+		// Find the first app_id this node serves and evaluate isolation.
+		var nodeAppID string
+		for appID := range a.nodeCfg.Apps {
+			nodeAppID = appID
+			break
+		}
+		result := a.policyEng.EvaluateDiscovery(policy.DiscoveryRequest{
+			OriginAppID: req.OriginAppID,
+			NodeAppID:   nodeAppID,
+		})
+		if result.Decision == policy.DecisionDeny {
+			return &DiscoveryResponse{}, nil
+		}
+	}
+
+	// Fan out to peers via the broadcaster (handles hop_limit, dedup, staleness).
+	if a.broadcaster != nil {
+		dreq := discovery.Request{
+			QueryHash:    req.QueryHash,
+			QueryType:    req.QueryType,
+			OriginNodeID: req.OriginNodeID,
+			OriginAppID:  req.OriginAppID,
+			HopLimit:     req.HopLimit,
+			RequestID:    req.RequestID,
+			Timestamp:    req.Timestamp,
+		}
+		forwarded := a.broadcaster.Broadcast(ctx, dreq)
+		if len(forwarded) > 0 {
+			// Return the first peer match; the HTTP discovery API aggregates all.
+			r := forwarded[0]
+			return &DiscoveryResponse{
+				NodeID:       r.NodeID,
+				AppID:        r.AppID,
+				OpaqueToken:  r.OpaqueToken,
+				DisplayHint:  r.DisplayHint,
+				MatchType:    r.MatchType,
+				TokenExpires: r.TokenExpires,
+			}, nil
+		}
+	}
+
+	// Search this node's own registered users.
+	for appID, app := range a.nodeCfg.Apps {
+		for _, u := range app.Users {
+			// Simple exact match on display_hint for now; query_hash matching
+			// requires the App to pre-hash its identifier — left to the App layer.
+			ttl := a.nodeCfg.Node.DiscoveryTokenTTL
+			if ttl <= 0 {
+				ttl = 5 * time.Minute
+			}
+			tok, err := a.tokenStore.Issue(appID, req.OriginNodeID, ttl)
+			if err != nil {
+				log.Printf("[discovery] issue token: %v", err)
+				continue
+			}
+			expires := time.Now().Add(ttl).UnixMilli()
+			return &DiscoveryResponse{
+				NodeID:       a.nodeCfg.Node.NodeID,
+				AppID:        appID,
+				OpaqueToken:  tok,
+				DisplayHint:  u.DisplayHint,
+				MatchType:    "exact",
+				TokenExpires: expires,
+			}, nil
+		}
+	}
+
+	return &DiscoveryResponse{}, nil
+}
+
+func (a *gatewayAdapter) Connect(_ context.Context, req *ConnectRequest) (*ConnectAck, error) {
+	if a.tokenStore == nil {
+		return &ConnectAck{Status: string(connect.StatusDenied), Reason: "discovery not enabled"}, nil
+	}
+
+	appID, originNodeID, err := a.tokenStore.Resolve(req.OpaqueToken)
+	if err != nil {
+		return &ConnectAck{Status: string(connect.StatusDenied), Reason: "invalid or expired token"}, nil
+	}
+
+	// Verify the token was issued for this requester.
+	if originNodeID != req.OriginNodeID {
+		return &ConnectAck{Status: string(connect.StatusDenied), Reason: "token not issued for this node"}, nil
+	}
+
+	a.tokenStore.Evict(req.OpaqueToken)
+
+	var resolvedStatus connect.Status
+	if a.connectRes != nil {
+		mutual := a.tokenStore.HasActiveToken(req.OriginNodeID)
+		resolvedStatus = a.connectRes.Resolve(connect.Request{
+			OriginNodeID:    req.OriginNodeID,
+			OriginAppID:     req.OriginAppID,
+			RecipientAppID:  appID,
+			MutualDiscovery: mutual,
+		})
+	} else {
+		resolvedStatus = connect.StatusPending
+	}
+
+	ack := &ConnectAck{Status: string(resolvedStatus)}
+	if resolvedStatus == connect.StatusAccepted {
+		ack.SessionID = uuid.NewString()
+		ack.ExpiresAt = time.Now().Add(24 * time.Hour).UnixMilli()
+	}
+	return ack, nil
 }

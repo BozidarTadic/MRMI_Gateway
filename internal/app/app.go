@@ -12,10 +12,12 @@ import (
 
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/connect"
 	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/crl"
 	"MRMI_Gateway/internal/dedup"
 	"MRMI_Gateway/internal/delivery"
+	"MRMI_Gateway/internal/discovery"
 	"MRMI_Gateway/internal/dnstxt"
 	"MRMI_Gateway/internal/dummy"
 	"MRMI_Gateway/internal/hotreload"
@@ -26,10 +28,11 @@ import (
 	"MRMI_Gateway/internal/registry"
 	"MRMI_Gateway/internal/server"
 	"MRMI_Gateway/internal/session"
-	"MRMI_Gateway/internal/trustdecay"
 	"MRMI_Gateway/internal/tlsutil"
-	"MRMI_Gateway/internal/webhook"
+	"MRMI_Gateway/internal/token"
+	"MRMI_Gateway/internal/trustdecay"
 	grpctransport "MRMI_Gateway/internal/transport/grpc"
+	"MRMI_Gateway/internal/webhook"
 )
 
 // Run starts the gateway node. configPath is the path to the loaded config file;
@@ -215,12 +218,40 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		OnConfigReload: onReload,
 	})
 
-	var adapter grpctransport.GatewayService
-	if peerCache != nil {
-		adapter = grpctransport.NewAdapterFull(gw, nil, peerCache)
-	} else {
-		adapter = grpctransport.NewAdapter(gw)
+	// Sprint 7: opaque token store + background purge.
+	tokenStore := token.New()
+	go runTokenPurge(ctx, tokenStore)
+
+	// Sprint 7: discovery broadcaster — fan out BroadcastDiscovery to peers.
+	var broadcaster *discovery.Broadcaster
+	if len(cfg.Network.Peers) > 0 {
+		peers := make(map[string]string, len(cfg.Network.Peers))
+		for k, p := range cfg.Network.Peers {
+			peers[k] = p.Addr
+		}
+		discoveryDedup := dedup.New(30 * time.Second)
+		broadcaster = discovery.New(peers, discoveryDedup, func(dialCtx context.Context, addr string) (discovery.PeerClient, error) {
+			c, err := grpctransport.Dial(dialCtx, addr, clientTLS)
+			if err != nil {
+				return nil, err
+			}
+			return c.AsDiscoveryClient(), nil
+		})
 	}
+
+	// Sprint 7: connect resolver.
+	connectRes := connect.New(cfg)
+
+	discoveryDeps := grpctransport.DiscoveryDeps{
+		TokenStore:  tokenStore,
+		Broadcaster: broadcaster,
+		ConnectRes:  connectRes,
+		PolicyEng:   engine,
+		NodeCfg:     cfg,
+	}
+
+	var adapter grpctransport.GatewayService
+	adapter = grpctransport.NewAdapterWithDiscovery(gw, nil, peerCache, discoveryDeps)
 
 	grpcServer, err := grpctransport.NewServer(cfg.Network.GRPCListenAddr, adapter, serverTLS)
 	if err != nil {
@@ -249,6 +280,19 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 			return nil
 		}
 		return err
+	}
+}
+
+func runTokenPurge(ctx context.Context, s *token.Store) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.Purge()
+		}
 	}
 }
 

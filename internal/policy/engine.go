@@ -2,6 +2,7 @@ package policy
 
 import (
 	"slices"
+	"strings"
 	"sync/atomic"
 
 	"MRMI_Gateway/internal/audit"
@@ -23,6 +24,13 @@ const (
 )
 
 const ReasonTrustTierBelowMinimum = "TRUST_TIER_BELOW_MINIMUM"
+const ReasonAppIsolationViolation = "APP_ISOLATION_VIOLATION"
+
+// DiscoveryRequest is the input to EvaluateDiscovery.
+type DiscoveryRequest struct {
+	OriginAppID string // app_id from the incoming BroadcastDiscovery request
+	NodeAppID   string // app_id this node serves (from config.Apps key)
+}
 
 type Request struct {
 	SenderNodeID    string
@@ -109,6 +117,39 @@ func (e *Engine) Evaluate(req Request) Result {
 	}
 	e.appendAudit(cfg, result, req)
 	return result
+}
+
+// EvaluateDiscovery enforces app_id isolation policy before forwarding a
+// BroadcastDiscovery request.
+func (e *Engine) EvaluateDiscovery(req DiscoveryRequest) Result {
+	cfg := *e.cfg.Load()
+	isolation := strings.ToUpper(strings.TrimSpace(cfg.Policy.Discovery.AppIsolation))
+	if isolation == "" {
+		isolation = "SAME_APP_ONLY"
+	}
+
+	var allowed bool
+	switch isolation {
+	case "OPEN":
+		allowed = true
+	case "WHITELIST":
+		allowed = slices.Contains(cfg.Policy.Discovery.AllowedAppIDs, req.OriginAppID)
+	default: // SAME_APP_ONLY
+		allowed = strings.EqualFold(req.OriginAppID, req.NodeAppID)
+	}
+
+	if !allowed {
+		return Result{
+			Decision: DecisionDeny,
+			Reason:   ReasonAppIsolationViolation,
+			Profile:  cfg.Profile.Name,
+		}
+	}
+	return Result{
+		Decision: DecisionAllow,
+		Reason:   "DISCOVERY_POLICY_ACCEPTED",
+		Profile:  cfg.Profile.Name,
+	}
 }
 
 func (e *Engine) appendAudit(cfg config.Config, result Result, req Request) {
