@@ -15,10 +15,11 @@ import (
 type Decision string
 
 const (
-	DecisionAllow     Decision = "ALLOW"
-	DecisionDeny      Decision = "DENY"
-	DecisionDuplicate Decision = "DUPLICATE"
-	DecisionDummy     Decision = "ALLOW/DUMMY"
+	DecisionAllow         Decision = "ALLOW"
+	DecisionDeny          Decision = "DENY"
+	DecisionDuplicate     Decision = "DUPLICATE"
+	DecisionDummy         Decision = "ALLOW/DUMMY"
+	DecisionTransitCached Decision = "ALLOW/TRANSIT_CACHED"
 )
 
 type Entry struct {

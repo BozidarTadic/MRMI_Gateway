@@ -245,3 +245,49 @@ class ConnectResult:
             session_id=d.get("session_id"),
             expires_at=d.get("expires_at", 0),
         )
+
+
+@dataclass
+class IssuedToken:
+    token: str
+    scope: str
+    expires_at: int
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "IssuedToken":
+        return cls(
+            token=d.get("token", ""),
+            scope=d.get("scope", "read"),
+            expires_at=d.get("expires_at", 0),
+        )
+
+
+@dataclass
+class AppInfo:
+    app_id: str
+    webhook_url: str
+    auto_accept: str
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "AppInfo":
+        return cls(
+            app_id=d.get("app_id", ""),
+            webhook_url=d.get("webhook_url", ""),
+            auto_accept=d.get("auto_accept", "manual"),
+        )
+
+
+@dataclass
+class RegisterAppRequest:
+    app_id: str
+    webhook_url: str = ""
+    webhook_secret: str = ""
+    auto_accept: AutoAcceptMode = AutoAcceptMode.MANUAL
+
+    def to_dict(self) -> dict:
+        return {
+            "app_id": self.app_id,
+            "webhook_url": self.webhook_url,
+            "webhook_secret": self.webhook_secret,
+            "auto_accept": self.auto_accept.value,
+        }

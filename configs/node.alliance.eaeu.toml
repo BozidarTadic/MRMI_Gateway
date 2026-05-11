@@ -1,0 +1,54 @@
+[node]
+node_id        = "eaeu-hub-01"
+node_scope     = "alliance"
+regions        = ["BY", "KZ", "AM", "KG", "TJ"]
+alliance_id    = "eaeu-2014"
+operator_id    = "eaeu-clearinghouse"
+policy_version = "0.4.0"
+applicable_law = "EAEU-PDL"
+signed_by      = "ed25519:REPLACE_ME"
+
+[profile]
+name = "balanced"
+
+[policy.outbound]
+allow_to      = ["RS", "RU", "CN", "IR"]
+deny_to       = []
+store_locally = true
+
+[policy.inbound]
+min_trust_tier = 1
+
+[policy.routing]
+allow_via = ["regional", "alliance"]
+
+[policy.audit]
+log_all_decisions   = true
+log_backend         = "local-merkle"
+dns_txt_publish     = true
+dns_txt_interval_s  = 3600
+https_well_known    = true
+
+[network]
+grpc_listen_addr = "0.0.0.0:7777"
+http_listen_addr = "0.0.0.0:8080"
+metrics_addr     = "0.0.0.0:9090"
+
+[network.peers]
+  [network.peers.RS]
+  addr       = "rs-seed.example.com:7777"
+  node_scope = "regional"
+
+  [network.peers.RU]
+  addr       = "ru-seed.example.com:7777"
+  node_scope = "regional"
+
+[tls]
+cert     = "/etc/mrmi/node.crt"
+key      = "/etc/mrmi/node.key"
+ca       = "/etc/mrmi/ca.crt"
+insecure = false
+
+[storage]
+backend = "bbolt"
+path    = "/var/lib/mrmi"

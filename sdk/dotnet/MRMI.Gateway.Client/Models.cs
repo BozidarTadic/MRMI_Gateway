@@ -261,3 +261,46 @@ public sealed record ConnectOptions
     /// <summary>How the target node should auto-accept the request.</summary>
     public AutoAcceptMode AutoAccept { get; init; } = AutoAcceptMode.Manual;
 }
+
+// ── JWT token issuance (v0.3) ─────────────────────────────────────────────────
+
+public sealed class IssuedToken
+{
+    [JsonPropertyName("token")]
+    public string Token { get; init; } = "";
+
+    [JsonPropertyName("scope")]
+    public string Scope { get; init; } = "read";
+
+    [JsonPropertyName("expires_at")]
+    public long ExpiresAt { get; init; }
+}
+
+// ── App management (v0.3) ────────────────────────────────────────────────────
+
+public sealed class AppInfo
+{
+    [JsonPropertyName("app_id")]
+    public string AppId { get; init; } = "";
+
+    [JsonPropertyName("webhook_url")]
+    public string WebhookUrl { get; init; } = "";
+
+    [JsonPropertyName("auto_accept")]
+    public string AutoAccept { get; init; } = "manual";
+}
+
+public sealed class RegisterAppRequest
+{
+    [JsonPropertyName("app_id")]
+    public required string AppId { get; init; }
+
+    [JsonPropertyName("webhook_url")]
+    public string WebhookUrl { get; init; } = "";
+
+    [JsonPropertyName("webhook_secret")]
+    public string WebhookSecret { get; init; } = "";
+
+    [JsonPropertyName("auto_accept")]
+    public string AutoAccept { get; init; } = "manual";
+}

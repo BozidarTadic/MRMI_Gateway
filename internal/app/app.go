@@ -31,8 +31,10 @@ import (
 	"MRMI_Gateway/internal/session"
 	storebb "MRMI_Gateway/internal/store/bbolt"
 	storeredis "MRMI_Gateway/internal/store/redis"
+	"MRMI_Gateway/internal/ratelimit"
 	"MRMI_Gateway/internal/tlsutil"
 	"MRMI_Gateway/internal/token"
+	"MRMI_Gateway/internal/transit"
 	"MRMI_Gateway/internal/trustdecay"
 	grpctransport "MRMI_Gateway/internal/transport/grpc"
 	"MRMI_Gateway/internal/webhook"
@@ -139,9 +141,18 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	}
 
 	dlq := delivery.NewDLQ()
+
+	// Transit cache: buffer failed forwards briefly before DLQ (ADR §4.3).
+	var tc *transit.Cache
+	if cfg.Profile.TransitCacheTTL > 0 {
+		tc = transit.New(cfg.Profile.TransitCacheTTL)
+		log.Printf("[transit] cache enabled (TTL %s)", cfg.Profile.TransitCacheTTL)
+		go runTransitRetry(ctx, tc, dlq, auditLog, cfg)
+	}
+
 	var fwd core.Forwarder
 	if len(cfg.Network.Peers) > 0 {
-		fwd = delivery.NewForwarder(cfg, dlq, func(ctx context.Context, addr string, env core.Envelope) (string, error) {
+		fwd = delivery.NewForwarder(cfg, dlq, tc, func(ctx context.Context, addr string, env core.Envelope) (string, error) {
 			env.SequenceNumber = seqSend.NextSeq(env.RecipientRegion)
 			env.Signature = identity.Sign(signingKey, env)
 
@@ -304,13 +315,16 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	}
 	go runPeerGossip(ctx, cfg, peerRegistry, clientTLS, gossipInterval)
 
+	discoveryLimiter := ratelimit.New(10, 20) // 10 req/s, burst 20 per origin node
+
 	discoveryDeps := grpctransport.DiscoveryDeps{
-		TokenStore:   tokenStore,
-		Broadcaster:  broadcaster,
-		ConnectRes:   connectRes,
-		PolicyEng:    engine,
-		PeerRegistry: peerRegistry,
-		NodeCfg:      cfg,
+		TokenStore:       tokenStore,
+		Broadcaster:      broadcaster,
+		ConnectRes:       connectRes,
+		PolicyEng:        engine,
+		PeerRegistry:     peerRegistry,
+		DiscoveryLimiter: discoveryLimiter,
+		NodeCfg:          cfg,
 	}
 
 	var adapter grpctransport.GatewayService
@@ -430,6 +444,21 @@ func runPurge(ctx context.Context, idx *dedup.Index) {
 			return
 		case <-ticker.C:
 			idx.Purge()
+		}
+	}
+}
+
+func runTransitRetry(ctx context.Context, tc *transit.Cache, dlq *delivery.DLQ, _ *audit.Log, _ config.Config) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for _, e := range tc.Drain() {
+				dlq.Append(delivery.DLQEntry{Envelope: e.Env, PeerAddr: e.PeerAddr})
+			}
 		}
 	}
 }

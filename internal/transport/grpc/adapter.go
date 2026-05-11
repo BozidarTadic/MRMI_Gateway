@@ -19,6 +19,7 @@ import (
 	"MRMI_Gateway/internal/peercache"
 	"MRMI_Gateway/internal/peerdiscovery"
 	"MRMI_Gateway/internal/policy"
+	"MRMI_Gateway/internal/ratelimit"
 	"MRMI_Gateway/internal/session"
 	"MRMI_Gateway/internal/token"
 )
@@ -34,8 +35,9 @@ type gatewayAdapter struct {
 	broadcaster   *discovery.Broadcaster // nil = no peer fan-out
 	connectRes    *connect.Resolver      // nil = always PENDING
 	policyEng     *policy.Engine         // nil = no isolation check
-	peerRegistry  *peerdiscovery.Registry // nil = no dynamic peer discovery
-	nodeCfg       config.Config
+	peerRegistry    *peerdiscovery.Registry // nil = no dynamic peer discovery
+	discoveryLimiter *ratelimit.Limiter      // nil = no rate limiting
+	nodeCfg         config.Config
 }
 
 // NewAdapter wraps a core.Gateway so it satisfies the GatewayService interface.
@@ -54,30 +56,32 @@ func NewAdapterFull(gw *core.Gateway, verifyKey ed25519.PublicKey, peerCache *pe
 	return &gatewayAdapter{gw: gw, seqRecv: session.New(), verifyKey: verifyKey, peerCache: peerCache}
 }
 
-// DiscoveryDeps groups the Sprint-7/8 dependencies for discovery, connect, and peer exchange.
+// DiscoveryDeps groups the Sprint-7/8/9 dependencies for discovery, connect, and peer exchange.
 type DiscoveryDeps struct {
-	TokenStore   *token.Store
-	Broadcaster  *discovery.Broadcaster
-	ConnectRes   *connect.Resolver
-	PolicyEng    *policy.Engine
-	PeerRegistry *peerdiscovery.Registry
-	NodeCfg      config.Config
+	TokenStore       *token.Store
+	Broadcaster      *discovery.Broadcaster
+	ConnectRes       *connect.Resolver
+	PolicyEng        *policy.Engine
+	PeerRegistry     *peerdiscovery.Registry
+	DiscoveryLimiter *ratelimit.Limiter // nil = unlimited
+	NodeCfg          config.Config
 }
 
 // NewAdapterWithDiscovery wraps a core.Gateway with all Sprint-7 discovery/connect
 // dependencies in addition to the standard gossip cache.
 func NewAdapterWithDiscovery(gw *core.Gateway, verifyKey ed25519.PublicKey, peerCache *peercache.Cache, deps DiscoveryDeps) GatewayService {
 	return &gatewayAdapter{
-		gw:           gw,
-		seqRecv:      session.New(),
-		verifyKey:    verifyKey,
-		peerCache:    peerCache,
-		tokenStore:   deps.TokenStore,
-		broadcaster:  deps.Broadcaster,
-		connectRes:   deps.ConnectRes,
-		policyEng:    deps.PolicyEng,
-		peerRegistry: deps.PeerRegistry,
-		nodeCfg:      deps.NodeCfg,
+		gw:               gw,
+		seqRecv:          session.New(),
+		verifyKey:        verifyKey,
+		peerCache:        peerCache,
+		tokenStore:       deps.TokenStore,
+		broadcaster:      deps.Broadcaster,
+		connectRes:       deps.ConnectRes,
+		policyEng:        deps.PolicyEng,
+		peerRegistry:     deps.PeerRegistry,
+		discoveryLimiter: deps.DiscoveryLimiter,
+		nodeCfg:          deps.NodeCfg,
 	}
 }
 
@@ -164,6 +168,11 @@ func (a *gatewayAdapter) ShareRootHash(_ context.Context, req *RootHashMessage) 
 func (a *gatewayAdapter) BroadcastDiscovery(ctx context.Context, req *DiscoveryRequest) (*DiscoveryResponse, error) {
 	if a.tokenStore == nil {
 		return &DiscoveryResponse{}, nil
+	}
+
+	// Per-origin-node rate limit (ADR §5.1 — prevents discovery flooding).
+	if a.discoveryLimiter != nil && !a.discoveryLimiter.Allow(req.OriginNodeID) {
+		return nil, status.Errorf(codes.ResourceExhausted, "discovery rate limit exceeded for node %q", req.OriginNodeID)
 	}
 
 	// Enforce app isolation policy before searching local registry.

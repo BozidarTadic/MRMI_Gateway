@@ -82,7 +82,7 @@ func startNodeFwd(t *testing.T, cfg config.Config, retryPolicy delivery.RetryPol
 	t.Helper()
 
 	dlq := delivery.NewDLQ()
-	fwd := delivery.NewForwarderWithPolicy(cfg, dlq, send, retryPolicy)
+	fwd := delivery.NewForwarderWithPolicy(cfg, dlq, nil, send, retryPolicy)
 
 	auditLog := audit.New()
 	engine, err := policy.NewEngine(cfg, auditLog, nil)

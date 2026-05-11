@@ -20,7 +20,7 @@ func TestPeersFor_RegionalDirectMatch(t *testing.T) {
 		"RU": {Addr: "ru:7777", NodeScope: "regional"},
 		"BY": {Addr: "by:7777", NodeScope: "regional"},
 	})
-	f := NewForwarder(cfg, nil, nil)
+	f := NewForwarder(cfg, nil, nil, nil)
 
 	got := f.PeersFor("RU")
 	if len(got) != 1 || got[0].Addr != "ru:7777" {
@@ -32,7 +32,7 @@ func TestPeersFor_AllianceFallback(t *testing.T) {
 	cfg := peers(map[string]config.PeerConfig{
 		"eaeu-01": {Addr: "eaeu:7777", NodeScope: "alliance", Regions: []string{"BY", "KZ", "AM"}},
 	})
-	f := NewForwarder(cfg, nil, nil)
+	f := NewForwarder(cfg, nil, nil, nil)
 
 	got := f.PeersFor("KZ")
 	if len(got) != 1 || got[0].Addr != "eaeu:7777" {
@@ -44,7 +44,7 @@ func TestPeersFor_GlobalFallback(t *testing.T) {
 	cfg := peers(map[string]config.PeerConfig{
 		"global-01": {Addr: "global:7777", NodeScope: "global"},
 	})
-	f := NewForwarder(cfg, nil, nil)
+	f := NewForwarder(cfg, nil, nil, nil)
 
 	got := f.PeersFor("DE") // no regional or alliance peer for DE
 	if len(got) != 1 || got[0].Addr != "global:7777" {
@@ -58,13 +58,12 @@ func TestPeersFor_TierPreferenceOrder(t *testing.T) {
 		"eaeu-01":   {Addr: "eaeu:7777", NodeScope: "alliance", Regions: []string{"RU", "BY", "KZ"}},
 		"global-01": {Addr: "global:7777", NodeScope: "global"},
 	})
-	f := NewForwarder(cfg, nil, nil)
+	f := NewForwarder(cfg, nil, nil, nil)
 
 	got := f.PeersFor("RU")
 	if len(got) != 3 {
 		t.Fatalf("expected 3 candidates, got %d: %v", len(got), got)
 	}
-	// Regional must be first, global last
 	if got[0].NodeScope != "regional" {
 		t.Errorf("first candidate must be regional, got %q", got[0].NodeScope)
 	}
@@ -79,7 +78,7 @@ func TestPeersFor_AllowViaFiltersGlobal(t *testing.T) {
 		"global-01": {Addr: "global:7777", NodeScope: "global"},
 	})
 	cfg.Policy.Routing.AllowVia = []string{"regional", "alliance"}
-	f := NewForwarder(cfg, nil, nil)
+	f := NewForwarder(cfg, nil, nil, nil)
 
 	got := f.PeersFor("RU")
 	for _, p := range got {
@@ -93,7 +92,7 @@ func TestPeersFor_AllowViaFiltersGlobal(t *testing.T) {
 }
 
 func TestPeersFor_NoPeers(t *testing.T) {
-	f := NewForwarder(config.DefaultConfigForProfile("balanced"), nil, nil)
+	f := NewForwarder(config.DefaultConfigForProfile("balanced"), nil, nil, nil)
 	if got := f.PeersFor("RU"); len(got) != 0 {
 		t.Fatalf("expected no peers, got %v", got)
 	}
@@ -105,7 +104,7 @@ func TestForward_SuccessOnFirstPeer(t *testing.T) {
 	})
 
 	var called string
-	f := NewForwarder(cfg, nil, func(_ context.Context, addr string, _ core.Envelope) (string, error) {
+	f := NewForwarder(cfg, nil, nil, func(_ context.Context, addr string, _ core.Envelope) (string, error) {
 		called = addr
 		return "peer-root-hash", nil
 	})
@@ -132,7 +131,7 @@ func TestForward_FallsBackToNextTier(t *testing.T) {
 		"global-01": {Addr: "global:7777", NodeScope: "global"},
 	})
 
-	f := NewForwarder(cfg, nil, func(_ context.Context, addr string, _ core.Envelope) (string, error) {
+	f := NewForwarder(cfg, nil, nil, func(_ context.Context, addr string, _ core.Envelope) (string, error) {
 		if addr == "ru:7777" {
 			return "", errors.New("unreachable")
 		}
@@ -155,7 +154,7 @@ func TestForward_WritesToDLQOnExhaustion(t *testing.T) {
 	})
 
 	dlq := NewDLQ()
-	f := NewForwarder(cfg, dlq, func(_ context.Context, _ string, _ core.Envelope) (string, error) {
+	f := NewForwarder(cfg, dlq, nil, func(_ context.Context, _ string, _ core.Envelope) (string, error) {
 		return "", errors.New("always fails")
 	})
 	f.retryPolicy = singleAttempt()
@@ -170,7 +169,7 @@ func TestForward_WritesToDLQOnExhaustion(t *testing.T) {
 }
 
 func TestForward_NoPeerReturnsError(t *testing.T) {
-	f := NewForwarder(config.DefaultConfigForProfile("balanced"), NewDLQ(), nil)
+	f := NewForwarder(config.DefaultConfigForProfile("balanced"), NewDLQ(), nil, nil)
 	_, err := f.Forward(context.Background(), core.Envelope{RecipientRegion: "XX"})
 	if err == nil {
 		t.Fatal("expected error when no peer available")

@@ -7,6 +7,17 @@ public sealed class MrmiClientOptions
     public required string BaseUrl { get; init; }
 
     /// <summary>
+    /// API key sent as <c>X-MRMI-Key</c>. Ignored when <see cref="JwtToken"/> is set.
+    /// </summary>
+    public string? ApiKey { get; init; }
+
+    /// <summary>
+    /// JWT bearer token sent as <c>Authorization: Bearer …</c>.
+    /// Takes precedence over <see cref="ApiKey"/>.
+    /// </summary>
+    public string? JwtToken { get; init; }
+
+    /// <summary>
     /// Optional pre-configured <see cref="HttpClient"/>. When provided the SDK uses it
     /// directly; <see cref="Timeout"/> is ignored. Useful for testing with a mock handler.
     /// </summary>
