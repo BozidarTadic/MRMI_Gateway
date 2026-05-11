@@ -49,7 +49,7 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.1 (Sprint 4 in progress)
+## Current Status — v0.1 (Sprint 4 complete)
 
 **Sprint 1 + 2 — complete**
 
@@ -79,12 +79,12 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 - [x] Trust decay timer — auto-reduce effective tier after 30 days without cross-validation
 - [x] Dummy traffic generator — synthetic envelopes at profile-defined intervals (`dummy` package)
 
-**Sprint 4 — in progress**
+**Sprint 4 — complete**
 
-- [ ] HTTPS `/.well-known/mrmi-audit` with Ed25519 signature (`https_well_known = true`)
-- [ ] Cross-node root hash gossip — peers cross-verify audit chains (`root_hash_gossip = true`)
-- [ ] Policy hot-reload — config changes applied within 5 seconds without restart (`hotreload` package)
-- [ ] `mrmi` CLI — `keygen`, `audit verify --local/--dns/--https`
+- [x] HTTPS `/.well-known/mrmi-audit` with Ed25519 signature (`https_well_known = true`)
+- [x] Cross-node root hash gossip — peers cross-verify audit chains (`root_hash_gossip = true`)
+- [x] Policy hot-reload — config changes applied within 5 seconds without restart (`hotreload` package)
+- [x] `mrmi` CLI — `keygen`, `audit verify --local/--dns/--https`
 
 **Future**
 
@@ -134,7 +134,8 @@ Profile definitions (dedup TTL, jitter, padding, dummy traffic rates) live in `i
 ## Repository Layout
 
 ```
-cmd/mrmi-gateway/   — process entrypoint
+cmd/mrmi-gateway/   — node process entrypoint
+cmd/mrmi/           — operator CLI (keygen, audit verify)
 internal/
   app/              — wiring: audit, policy, HTTP, gRPC, shutdown
   audit/            — Merkle chain log (SHA-256, Verify, RootHash)
@@ -153,6 +154,8 @@ internal/
   testcerts/        — in-process self-signed cert generation (tests only)
   tlsutil/          — LoadServerTLS / LoadClientTLS
   transport/grpc/   — gRPC server + client, JSON codec
+  hotreload/        — config file watcher; atomic policy hot-reload
+  peercache/        — in-memory store for peer audit root hashes
   trustdecay/       — effective tier decay after 30d without cross-validation
   version/          — single source of truth for App + ADR version strings
 proto/mrmi/v1/      — protobuf contracts

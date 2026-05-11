@@ -1,5 +1,7 @@
 # Sprint 4 Plan
 
+> **COMPLETE** — commit `b7767cd` · all 4 tasks delivered · `go test ./...` green
+
 ## Context
 
 Sprint 3 delivered the full trust enforcement layer: Ed25519 envelope signing, CRL revocation with gossip quorum, trust tier audit entries, trust decay, and dummy traffic. The `/.well-known/mrmi-audit` HTTP endpoint exists but returns an unsigned response. The policy engine must be restarted to pick up config changes. Operators have no CLI tooling for key management or audit verification. Nodes do not cross-check each other's audit roots.
