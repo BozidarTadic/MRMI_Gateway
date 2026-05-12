@@ -1,0 +1,466 @@
+@page "/"
+@using MRMI.Gateway.Client
+@inject DemoState State
+@implements IDisposable
+
+<PageTitle>MRMI Gateway Demo</PageTitle>
+
+<div class="app-layout">
+
+    <!-- ── Thin top bar ─────────────────────────────────────────── -->
+    <div class="app-bar">
+        <span class="app-bar-brand">MRMI Gateway</span>
+        <span class="node-pill @(State.RsOnline ? "node-online" : "node-offline")">&#127480;&#127479; RS</span>
+        <span class="node-pill @(State.RuOnline ? "node-online" : "node-offline")">&#127479;&#127482; RU</span>
+        <div class="ms-auto">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="State.ClearLog">Clear log</button>
+        </div>
+    </div>
+
+    <!-- ── Two-panel main area ───────────────────────────────────── -->
+    <div class="app-main">
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  RS PANEL                                              -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <div class="node-panel panel-rs">
+
+            <!-- User selector header -->
+            <div class="panel-top">
+                <span class="panel-flag">&#127480;&#127479;</span>
+                <div class="panel-top-label">RS Node</div>
+                @if (_loading)
+                {
+                    <span class="text-muted small ms-2">Loading…</span>
+                }
+                else
+                {
+                    <select class="form-select form-select-sm user-select ms-2"
+                            value="@_rsUserId"
+                            @onchange="e => OnRsUserChange(e.Value?.ToString())">
+                        @foreach (var u in State.RsUsers)
+                        {
+                            <option value="@u.UserId">@u.DisplayHint</option>
+                        }
+                    </select>
+                }
+            </div>
+
+            <!-- Panel body: chat list / chat view / new-chat picker -->
+            <div class="panel-body">
+
+                @if (_rsView == PanelView.List)
+                {
+                    var rsChats = State.ChatList.Where(c => c.RsId == _rsUserId).ToList();
+
+                    <div class="chat-list">
+                        @if (!rsChats.Any())
+                        {
+                            <div class="chat-list-empty">
+                                <div class="chat-empty-icon">&#128172;</div>
+                                <div class="chat-empty-title">No chats yet</div>
+                                <div class="chat-empty-hint">Tap "+ New chat" to start one.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var chat in rsChats)
+                            {
+                                var msgs    = State.GetMessages(chat.RsId, chat.RuId);
+                                var last    = msgs.LastOrDefault();
+                                var peer    = State.GetDisplayName(DemoState.RuRegion, chat.RuId);
+                                <div class="chat-list-item" @onclick="() => RsOpenChat(chat)">
+                                    <span class="chat-avatar chat-avatar-ru">@peer[0]</span>
+                                    <div class="chat-list-info">
+                                        <div class="chat-list-row">
+                                            <span class="chat-list-name">@peer</span>
+                                            @if (last is not null)
+                                            {
+                                                <span class="chat-list-time">@last.Timestamp.ToLocalTime().ToString("HH:mm")</span>
+                                            }
+                                        </div>
+                                        <div class="chat-list-preview">
+                                            @if (last is not null)
+                                            { @(last.Text.Length > 38 ? last.Text[..38] + "…" : last.Text) }
+                                            else
+                                            { <span class="text-muted fst-italic">No messages yet</span> }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    <div class="panel-footer">
+                        <button class="btn btn-sm btn-outline-primary w-100"
+                                @onclick="RsShowNew" disabled="@_loading">
+                            + New chat
+                        </button>
+                    </div>
+                }
+
+                else if (_rsView == PanelView.New)
+                {
+                    <div class="chat-view-header">
+                        <button class="btn-back" @onclick="RsBack">&#8592;</button>
+                        <span class="fw-semibold">New chat</span>
+                        <span class="ms-auto small text-muted">Select a contact</span>
+                    </div>
+                    <div class="chat-list">
+                        @foreach (var u in State.RuUsers)
+                        {
+                            var alreadyExists = State.ChatList.Any(c => c.RsId == _rsUserId && c.RuId == u.UserId);
+                            <div class="chat-list-item" @onclick="() => RsStartChat(u.UserId)">
+                                <span class="chat-avatar chat-avatar-ru">@u.DisplayHint[0]</span>
+                                <div class="chat-list-info">
+                                    <div class="chat-list-name">@u.DisplayHint</div>
+                                    <div class="chat-list-preview text-muted">
+                                        @u.UserId
+                                        @if (alreadyExists) { <span class="badge bg-secondary ms-1" style="font-size:0.6rem">existing</span> }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                else if (_rsView == PanelView.Chat && _rsChatKey is not null)
+                {
+                    var peer     = State.GetDisplayName(DemoState.RuRegion, _rsChatKey.Value.RuId);
+                    var self     = State.GetDisplayName(DemoState.RsRegion, _rsChatKey.Value.RsId);
+                    var messages = State.GetMessages(_rsChatKey.Value.RsId, _rsChatKey.Value.RuId);
+
+                    <div class="chat-view-header">
+                        <button class="btn-back" @onclick="RsBack">&#8592;</button>
+                        <span class="chat-avatar chat-avatar-ru chat-avatar-sm">@peer[0]</span>
+                        <span class="fw-semibold">@peer</span>
+                        <span class="ms-auto small text-muted">&#127479;&#127482; RU</span>
+                    </div>
+
+                    <div class="chat-thread">
+                        @foreach (var msg in messages)
+                        {
+                            var sent = msg.FromRegion == DemoState.RsRegion;
+                            <div class="msg-row @(sent ? "row-sent" : "row-received")">
+                                <div class="msg-bubble @(sent ? "msg-rs" : "msg-received")">
+                                    <span>@msg.Text</span>
+                                    <div class="msg-meta">@msg.Timestamp.ToLocalTime().ToString("HH:mm:ss")</div>
+                                </div>
+                            </div>
+                        }
+                        @if (!messages.Any())
+                        {
+                            <div class="no-messages">No messages yet — type below.</div>
+                        }
+                    </div>
+
+                    <div class="chat-input-bar">
+                        <input class="form-control form-control-sm"
+                               @bind="_rsText" @bind:event="oninput"
+                               @onkeydown="RsKeyDown"
+                               placeholder="@($"Message as {self}…")" />
+                        <button class="btn btn-sm btn-corridor-rs" @onclick="SendRs" disabled="@_rsSending">
+                            @(_rsSending ? "…" : "Send")
+                        </button>
+                    </div>
+
+                    @if (_rsStatus is not null)
+                    {
+                        <div class="send-status @(_rsStatus.StartsWith("ALLOW") ? "status-ok" : "status-err")">
+                            @_rsStatus
+                        </div>
+                    }
+                }
+
+            </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════ -->
+        <!--  RU PANEL                                              -->
+        <!-- ══════════════════════════════════════════════════════ -->
+        <div class="node-panel panel-ru">
+
+            <div class="panel-top">
+                <span class="panel-flag">&#127479;&#127482;</span>
+                <div class="panel-top-label">RU Node</div>
+                @if (_loading)
+                {
+                    <span class="text-muted small ms-2">Loading…</span>
+                }
+                else
+                {
+                    <select class="form-select form-select-sm user-select ms-2"
+                            value="@_ruUserId"
+                            @onchange="e => OnRuUserChange(e.Value?.ToString())">
+                        @foreach (var u in State.RuUsers)
+                        {
+                            <option value="@u.UserId">@u.DisplayHint</option>
+                        }
+                    </select>
+                }
+            </div>
+
+            <div class="panel-body">
+
+                @if (_ruView == PanelView.List)
+                {
+                    var ruChats = State.ChatList.Where(c => c.RuId == _ruUserId).ToList();
+
+                    <div class="chat-list">
+                        @if (!ruChats.Any())
+                        {
+                            <div class="chat-list-empty">
+                                <div class="chat-empty-icon">&#128172;</div>
+                                <div class="chat-empty-title">No chats yet</div>
+                                <div class="chat-empty-hint">Tap "+ New chat" to start one.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var chat in ruChats)
+                            {
+                                var msgs = State.GetMessages(chat.RsId, chat.RuId);
+                                var last = msgs.LastOrDefault();
+                                var peer = State.GetDisplayName(DemoState.RsRegion, chat.RsId);
+                                <div class="chat-list-item" @onclick="() => RuOpenChat(chat)">
+                                    <span class="chat-avatar chat-avatar-rs">@peer[0]</span>
+                                    <div class="chat-list-info">
+                                        <div class="chat-list-row">
+                                            <span class="chat-list-name">@peer</span>
+                                            @if (last is not null)
+                                            {
+                                                <span class="chat-list-time">@last.Timestamp.ToLocalTime().ToString("HH:mm")</span>
+                                            }
+                                        </div>
+                                        <div class="chat-list-preview">
+                                            @if (last is not null)
+                                            { @(last.Text.Length > 38 ? last.Text[..38] + "…" : last.Text) }
+                                            else
+                                            { <span class="text-muted fst-italic">No messages yet</span> }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    <div class="panel-footer">
+                        <button class="btn btn-sm btn-outline-danger w-100"
+                                @onclick="RuShowNew" disabled="@_loading">
+                            + New chat
+                        </button>
+                    </div>
+                }
+
+                else if (_ruView == PanelView.New)
+                {
+                    <div class="chat-view-header">
+                        <button class="btn-back" @onclick="RuBack">&#8592;</button>
+                        <span class="fw-semibold">New chat</span>
+                        <span class="ms-auto small text-muted">Select a contact</span>
+                    </div>
+                    <div class="chat-list">
+                        @foreach (var u in State.RsUsers)
+                        {
+                            var alreadyExists = State.ChatList.Any(c => c.RsId == u.UserId && c.RuId == _ruUserId);
+                            <div class="chat-list-item" @onclick="() => RuStartChat(u.UserId)">
+                                <span class="chat-avatar chat-avatar-rs">@u.DisplayHint[0]</span>
+                                <div class="chat-list-info">
+                                    <div class="chat-list-name">@u.DisplayHint</div>
+                                    <div class="chat-list-preview text-muted">
+                                        @u.UserId
+                                        @if (alreadyExists) { <span class="badge bg-secondary ms-1" style="font-size:0.6rem">existing</span> }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                else if (_ruView == PanelView.Chat && _ruChatKey is not null)
+                {
+                    var peer     = State.GetDisplayName(DemoState.RsRegion, _ruChatKey.Value.RsId);
+                    var self     = State.GetDisplayName(DemoState.RuRegion, _ruChatKey.Value.RuId);
+                    var messages = State.GetMessages(_ruChatKey.Value.RsId, _ruChatKey.Value.RuId);
+
+                    <div class="chat-view-header">
+                        <button class="btn-back" @onclick="RuBack">&#8592;</button>
+                        <span class="chat-avatar chat-avatar-rs chat-avatar-sm">@peer[0]</span>
+                        <span class="fw-semibold">@peer</span>
+                        <span class="ms-auto small text-muted">&#127480;&#127479; RS</span>
+                    </div>
+
+                    <div class="chat-thread">
+                        @foreach (var msg in messages)
+                        {
+                            var sent = msg.FromRegion == DemoState.RuRegion;
+                            <div class="msg-row @(sent ? "row-sent" : "row-received")">
+                                <div class="msg-bubble @(sent ? "msg-ru" : "msg-received")">
+                                    <span>@msg.Text</span>
+                                    <div class="msg-meta">@msg.Timestamp.ToLocalTime().ToString("HH:mm:ss")</div>
+                                </div>
+                            </div>
+                        }
+                        @if (!messages.Any())
+                        {
+                            <div class="no-messages">No messages yet — type below.</div>
+                        }
+                    </div>
+
+                    <div class="chat-input-bar">
+                        <button class="btn btn-sm btn-corridor-ru" @onclick="SendRu" disabled="@_ruSending">
+                            @(_ruSending ? "…" : "Send")
+                        </button>
+                        <input class="form-control form-control-sm"
+                               @bind="_ruText" @bind:event="oninput"
+                               @onkeydown="RuKeyDown"
+                               placeholder="@($"Message as {self}…")" />
+                    </div>
+
+                    @if (_ruStatus is not null)
+                    {
+                        <div class="send-status @(_ruStatus.StartsWith("ALLOW") ? "status-ok" : "status-err")">
+                            @_ruStatus
+                        </div>
+                    }
+                }
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Corridor log ──────────────────────────────────────────── -->
+    <div class="corridor-log">
+        <table class="table table-sm table-dark mb-0 small">
+            <thead>
+                <tr>
+                    <th style="width:82px">Time</th>
+                    <th style="width:82px">Direction</th>
+                    <th style="width:68px">Decision</th>
+                    <th style="width:110px">Reason</th>
+                    <th>Message</th>
+                    <th style="width:70px">Profile</th>
+                    <th style="width:90px">Node</th>
+                    <th style="width:80px" title="Local audit root hash">Root hash</th>
+                    <th style="width:80px" title="Peer audit root hash">Peer hash</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in State.Log)
+                {
+                    <tr class="@(e.Decision == "DENY" ? "table-danger" : e.Decision == "ERROR" ? "table-warning" : "")">
+                        <td>@e.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
+                        <td>@e.Direction</td>
+                        <td>
+                            <span class="badge @(e.Decision == "ALLOW" ? "bg-success" : e.Decision == "DENY" ? "bg-danger" : "bg-warning text-dark")">
+                                @e.Decision
+                            </span>
+                        </td>
+                        <td class="text-muted">@e.Reason</td>
+                        <td>@(e.Payload is not null ? (e.Payload.Length > 40 ? e.Payload[..40] + "…" : e.Payload) : "")</td>
+                        <td class="text-muted">@e.Profile</td>
+                        <td class="text-muted">@e.NodeId</td>
+                        <td class="font-monospace text-muted" style="font-size:0.68rem" title="@e.AuditRootHash">
+                            @(e.AuditRootHash is not null && e.AuditRootHash.Length > 8 ? e.AuditRootHash[..8] + "…" : e.AuditRootHash)
+                        </td>
+                        <td class="font-monospace text-muted" style="font-size:0.68rem" title="@e.PeerAuditRootHash">
+                            @(e.PeerAuditRootHash is not null && e.PeerAuditRootHash.Length > 8 ? e.PeerAuditRootHash[..8] + "…" : e.PeerAuditRootHash)
+                        </td>
+                    </tr>
+                }
+                @if (!State.Log.Any())
+                {
+                    <tr><td colspan="9" class="text-muted text-center py-2">No activity yet.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+@code {
+    private enum PanelView { List, New, Chat }
+
+    // RS panel state
+    private string    _rsUserId  = "";
+    private PanelView _rsView    = PanelView.List;
+    private (string RsId, string RuId)? _rsChatKey;
+    private string    _rsText    = "";
+    private bool      _rsSending;
+    private string?   _rsStatus;
+
+    // RU panel state
+    private string    _ruUserId  = "";
+    private PanelView _ruView    = PanelView.List;
+    private (string RsId, string RuId)? _ruChatKey;
+    private string    _ruText    = "";
+    private bool      _ruSending;
+    private string?   _ruStatus;
+
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.OnChanged += OnStateChanged;
+        State.StartStreaming();
+        await State.LoadUsersAsync();
+        if (State.RsUsers.Count > 0) _rsUserId = State.RsUsers[0].UserId;
+        if (State.RuUsers.Count > 0) _ruUserId = State.RuUsers[0].UserId;
+        _loading = false;
+    }
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    // ── RS panel navigation ───────────────────────────────────────
+    private void OnRsUserChange(string? id) { _rsUserId = id ?? ""; _rsView = PanelView.List; _rsChatKey = null; _rsStatus = null; }
+    private void RsShowNew()  => _rsView = PanelView.New;
+    private void RsBack()     { _rsView = PanelView.List; _rsChatKey = null; _rsStatus = null; }
+    private void RsOpenChat((string RsId, string RuId) key) { _rsChatKey = key; _rsView = PanelView.Chat; _rsStatus = null; }
+    private void RsStartChat(string ruId)
+    {
+        if (string.IsNullOrEmpty(_rsUserId)) return;
+        State.EnsureChat(_rsUserId, ruId);
+        RsOpenChat((_rsUserId, ruId));
+    }
+
+    // ── RU panel navigation ───────────────────────────────────────
+    private void OnRuUserChange(string? id) { _ruUserId = id ?? ""; _ruView = PanelView.List; _ruChatKey = null; _ruStatus = null; }
+    private void RuShowNew()  => _ruView = PanelView.New;
+    private void RuBack()     { _ruView = PanelView.List; _ruChatKey = null; _ruStatus = null; }
+    private void RuOpenChat((string RsId, string RuId) key) { _ruChatKey = key; _ruView = PanelView.Chat; _ruStatus = null; }
+    private void RuStartChat(string rsId)
+    {
+        if (string.IsNullOrEmpty(_ruUserId)) return;
+        State.EnsureChat(rsId, _ruUserId);
+        RuOpenChat((rsId, _ruUserId));
+    }
+
+    // ── Sending ───────────────────────────────────────────────────
+    private async Task RsKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") await SendRs(); }
+    private async Task RuKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") await SendRu(); }
+
+    private async Task SendRs()
+    {
+        if (string.IsNullOrWhiteSpace(_rsText) || _rsChatKey is null) return;
+        _rsSending = true; _rsStatus = null;
+        var text = _rsText; _rsText = "";
+        var (rsId, ruId) = _rsChatKey.Value;
+        var (decision, reason) = await State.SendAsync(rsId, ruId, DemoState.RsRegion, text);
+        _rsStatus = $"{decision} — {reason}";
+        _rsSending = false;
+    }
+
+    private async Task SendRu()
+    {
+        if (string.IsNullOrWhiteSpace(_ruText) || _ruChatKey is null) return;
+        _ruSending = true; _ruStatus = null;
+        var text = _ruText; _ruText = "";
+        var (rsId, ruId) = _ruChatKey.Value;
+        var (decision, reason) = await State.SendAsync(rsId, ruId, DemoState.RuRegion, text);
+        _ruStatus = $"{decision} — {reason}";
+        _ruSending = false;
+    }
+
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}

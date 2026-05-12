@@ -7,19 +7,19 @@ public sealed class DemoState : IAsyncDisposable
     public MrmiClient RsClient { get; }
     public MrmiClient RuClient { get; }
 
-    public const string RsUser = "Marko Petrović";
     public const string RsRegion = "RS";
-    public const string RuUser = "Иван Иванов";
     public const string RuRegion = "RU";
 
-    private readonly List<ChatMessage> _rsMessages = [];
-    private readonly List<ChatMessage> _ruMessages = [];
+    public IReadOnlyList<DiscoveryResult> RsUsers => _rsUsers;
+    public IReadOnlyList<DiscoveryResult> RuUsers => _ruUsers;
+    private List<DiscoveryResult> _rsUsers = [];
+    private List<DiscoveryResult> _ruUsers = [];
+
+    // key format: demo-{session}:{rsUserId}:{ruUserId}:{seq}
+    // ':' used as separator because user IDs contain '-' but never ':'
+    private readonly Dictionary<(string RsId, string RuId), List<ChatMessage>> _chats = new();
     private readonly List<LogEntry> _log = [];
     private readonly object _lock = new();
-
-    public IReadOnlyList<ChatMessage> RsMessages { get { lock (_lock) return [.. _rsMessages]; } }
-    public IReadOnlyList<ChatMessage> RuMessages { get { lock (_lock) return [.. _ruMessages]; } }
-    public IReadOnlyList<LogEntry> Log { get { lock (_lock) return _log.AsReadOnly(); } }
 
     public bool RsOnline { get; private set; }
     public bool RuOnline { get; private set; }
@@ -37,6 +37,23 @@ public sealed class DemoState : IAsyncDisposable
         var ruUrl = config["Demo:RuUrl"] ?? "http://localhost:8081";
         RsClient = new MrmiClient(new MrmiClientOptions { BaseUrl = rsUrl });
         RuClient = new MrmiClient(new MrmiClientOptions { BaseUrl = ruUrl });
+    }
+
+    public async Task LoadUsersAsync()
+    {
+        try
+        {
+            var rsTask = RsClient.DiscoverAsync("");
+            var ruTask = RuClient.DiscoverAsync("");
+            await Task.WhenAll(rsTask, ruTask);
+            lock (_lock)
+            {
+                _rsUsers = [.. rsTask.Result];
+                _ruUsers = [.. ruTask.Result];
+            }
+        }
+        catch { }
+        OnChanged?.Invoke();
     }
 
     public void StartStreaming()
@@ -59,17 +76,24 @@ public sealed class DemoState : IAsyncDisposable
                         ? System.Text.Encoding.UTF8.GetString(env.Payload).TrimEnd('\0')
                         : "(empty)";
 
+                    var (rsId, ruId) = ParseChatKey(env.IdempotencyKey);
+                    if (rsId is null || ruId is null) continue;
+
                     var msg = new ChatMessage(
                         DateTimeOffset.UtcNow,
                         env.SenderRegion,
                         env.RecipientRegion,
                         text,
-                        env.IdempotencyKey);
+                        env.IdempotencyKey,
+                        rsId, ruId);
 
                     lock (_lock)
                     {
-                        if (nodeRegion == RsRegion) _rsMessages.Add(msg);
-                        else _ruMessages.Add(msg);
+                        var key = (rsId, ruId);
+                        if (!_chats.ContainsKey(key)) _chats[key] = [];
+                        // Deduplicate: both RS and RU streams fire for the same message
+                        if (_chats[key].All(m => m.IdempotencyKey != msg.IdempotencyKey))
+                            _chats[key].Add(msg);
                     }
 
                     if (nodeRegion == RsRegion) RsOnline = true;
@@ -89,10 +113,49 @@ public sealed class DemoState : IAsyncDisposable
         }
     }
 
-    public async Task<(string Decision, string Reason)> SendAsync(
-        string fromRegion, string toRegion, string text)
+    private static (string? rsId, string? ruId) ParseChatKey(string? key)
     {
-        var key = $"demo-{_sessionPrefix}-{Interlocked.Increment(ref _seqCounter):D4}";
+        if (key is null) return (null, null);
+        var parts = key.Split(':');
+        return parts.Length >= 3 ? (parts[1], parts[2]) : (null, null);
+    }
+
+    public void EnsureChat(string rsId, string ruId)
+    {
+        lock (_lock)
+        {
+            var key = (rsId, ruId);
+            if (!_chats.ContainsKey(key)) _chats[key] = [];
+        }
+        OnChanged?.Invoke();
+    }
+
+    public IReadOnlyList<ChatMessage> GetMessages(string rsId, string ruId)
+    {
+        lock (_lock)
+        {
+            return _chats.TryGetValue((rsId, ruId), out var msgs) ? [.. msgs] : [];
+        }
+    }
+
+    public IReadOnlyList<(string RsId, string RuId)> ChatList
+    {
+        get { lock (_lock) return [.. _chats.Keys]; }
+    }
+
+    public string GetDisplayName(string region, string userId)
+    {
+        var list = region == RsRegion ? _rsUsers : _ruUsers;
+        return list.FirstOrDefault(u => u.UserId == userId)?.DisplayHint ?? userId;
+    }
+
+    public IReadOnlyList<LogEntry> Log { get { lock (_lock) return _log.AsReadOnly(); } }
+
+    public async Task<(string Decision, string Reason)> SendAsync(
+        string rsId, string ruId, string fromRegion, string text)
+    {
+        var toRegion = fromRegion == RsRegion ? RuRegion : RsRegion;
+        var key = $"demo-{_sessionPrefix}:{rsId}:{ruId}:{Interlocked.Increment(ref _seqCounter):D6}";
         var client = fromRegion == RsRegion ? RsClient : RuClient;
 
         try
@@ -106,21 +169,14 @@ public sealed class DemoState : IAsyncDisposable
                 Payload = System.Text.Encoding.UTF8.GetBytes(text),
             });
 
-            var entry = new LogEntry(
-                DateTimeOffset.UtcNow,
-                $"{fromRegion} → {toRegion}",
-                result.Decision,
-                result.Reason,
-                key,
-                Payload: text,
-                AuditRootHash: result.AuditRootHash,
-                PeerAuditRootHash: result.PeerAuditRootHash,
-                Profile: result.Profile,
-                NodeId: result.NodeId);
-
             lock (_lock)
             {
-                _log.Insert(0, entry);
+                _log.Insert(0, new LogEntry(
+                    DateTimeOffset.UtcNow, $"{fromRegion} → {toRegion}",
+                    result.Decision, result.Reason, key, Payload: text,
+                    AuditRootHash: result.AuditRootHash,
+                    PeerAuditRootHash: result.PeerAuditRootHash,
+                    Profile: result.Profile, NodeId: result.NodeId));
                 if (_log.Count > 200) _log.RemoveAt(_log.Count - 1);
             }
             OnChanged?.Invoke();
@@ -139,15 +195,18 @@ public sealed class DemoState : IAsyncDisposable
         }
     }
 
-    public void ClearLog()
+    public void ClearChat(string rsId, string ruId)
     {
-        lock (_lock) { _log.Clear(); }
+        lock (_lock)
+        {
+            if (_chats.ContainsKey((rsId, ruId))) _chats[(rsId, ruId)].Clear();
+        }
         OnChanged?.Invoke();
     }
 
-    public void ClearMessages()
+    public void ClearLog()
     {
-        lock (_lock) { _rsMessages.Clear(); _ruMessages.Clear(); }
+        lock (_lock) { _log.Clear(); }
         OnChanged?.Invoke();
     }
 
@@ -168,7 +227,9 @@ public sealed record ChatMessage(
     string FromRegion,
     string ToRegion,
     string Text,
-    string IdempotencyKey
+    string IdempotencyKey,
+    string? RsUserId = null,
+    string? RuUserId = null
 );
 
 public sealed record LogEntry(
