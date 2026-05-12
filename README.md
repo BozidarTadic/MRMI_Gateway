@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/assets/mrmi-gateway-logo.png" alt="MRMI Gateway logo" width="240">
+</p>
+
 # MRMI Gateway
 
 **Multi-Regional Multi-App Interlock** — open-source federation middleware for regulated cross-border messaging corridors.
