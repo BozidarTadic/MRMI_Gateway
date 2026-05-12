@@ -38,3 +38,18 @@ insecure = true
 [peers.RU]
 addr       = "localhost:7778"
 node_scope = "regional"
+
+[apps.mrmi-demo]
+auto_accept = "auto_all"
+
+[apps.mrmi-demo.users.marko-01]
+display_hint = "Marko Petrović"
+region       = "RS"
+
+[apps.mrmi-demo.users.ana-01]
+display_hint = "Ana Nikolić"
+region       = "RS"
+
+[apps.mrmi-demo.users.stefan-01]
+display_hint = "Stefan Jovanović"
+region       = "RS"

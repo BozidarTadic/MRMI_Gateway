@@ -179,6 +179,12 @@ a, .btn-link { color: #0071c1; }
     padding-bottom: 0.25rem;
 }
 
+.chat-layout .corridor-log {
+    flex-shrink: 0;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    Discovery page
    ══════════════════════════════════════════════════════════════════ */
@@ -186,6 +192,36 @@ a, .btn-link { color: #0071c1; }
 .discovery-layout {
     padding: 1rem;
     max-width: 820px;
+}
+
+.discovery-results {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.discovery-card {
+    border: 1px solid #dee2e6;
+    border-radius: 0.4rem;
+    padding: 0.65rem 0.85rem;
+    background: #fff;
+}
+
+.discovery-card:hover { background: #f8f9fa; }
+
+.discovery-explainer {
+    background: #f8f9fa;
+    border-radius: 0.4rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.82rem;
+    color: #495057;
+}
+
+.btn-xs {
+    padding: 0.15rem 0.45rem;
+    font-size: 0.75rem;
+    border-radius: 0.25rem;
+    line-height: 1.4;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

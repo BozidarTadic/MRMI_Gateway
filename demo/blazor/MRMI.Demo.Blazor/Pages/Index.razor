@@ -21,7 +21,7 @@
                     var sent = msg.FromRegion == DemoState.RsRegion;
                     <div class="msg-row @(sent ? "row-sent" : "row-received")">
                         <div class="msg-bubble @(sent ? "msg-sent" : "msg-received")">
-                            @msg.Text
+                            <span>@msg.Text</span>
                             <div class="msg-meta">@msg.Timestamp.ToLocalTime().ToString("HH:mm:ss")</div>
                         </div>
                     </div>
@@ -63,7 +63,7 @@
                     var sent = msg.FromRegion == DemoState.RuRegion;
                     <div class="msg-row @(sent ? "row-sent" : "row-received")">
                         <div class="msg-bubble @(sent ? "msg-sent" : "msg-received")">
-                            @msg.Text
+                            <span>@msg.Text</span>
                             <div class="msg-meta">@msg.Timestamp.ToLocalTime().ToString("HH:mm:ss")</div>
                         </div>
                     </div>
@@ -95,9 +95,57 @@
 
     <div class="chat-actions">
         <button class="btn btn-sm btn-outline-secondary" @onclick="State.ClearMessages">Clear messages</button>
+        <button class="btn btn-sm btn-outline-secondary ms-1" @onclick="State.ClearLog">Clear log</button>
         <span class="text-muted small ms-2">
             Messages arrive via SSE stream · both sides can send and reply
         </span>
+    </div>
+
+    <!-- ── Corridor log ────────────────────────────────────────────────── -->
+    <div class="corridor-log">
+        <table class="table table-sm table-dark mb-0 small">
+            <thead>
+                <tr>
+                    <th style="width:82px">Time</th>
+                    <th style="width:82px">Direction</th>
+                    <th style="width:68px">Decision</th>
+                    <th style="width:110px">Reason</th>
+                    <th>Message</th>
+                    <th style="width:70px">Profile</th>
+                    <th style="width:90px">Node</th>
+                    <th style="width:80px" title="Local audit root hash">Root hash</th>
+                    <th style="width:80px" title="Peer audit root hash">Peer hash</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in State.Log)
+                {
+                    <tr class="@(e.Decision == "DENY" ? "table-danger" : e.Decision == "ERROR" ? "table-warning" : "")">
+                        <td>@e.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
+                        <td>@e.Direction</td>
+                        <td>
+                            <span class="badge @(e.Decision == "ALLOW" ? "bg-success" : e.Decision == "DENY" ? "bg-danger" : "bg-warning text-dark")">
+                                @e.Decision
+                            </span>
+                        </td>
+                        <td class="text-muted">@e.Reason</td>
+                        <td>@(e.Payload is not null ? (e.Payload.Length > 40 ? e.Payload[..40] + "…" : e.Payload) : "")</td>
+                        <td class="text-muted">@e.Profile</td>
+                        <td class="text-muted">@e.NodeId</td>
+                        <td class="font-monospace text-muted" style="font-size:0.68rem" title="@e.AuditRootHash">
+                            @(e.AuditRootHash is not null && e.AuditRootHash.Length > 8 ? e.AuditRootHash[..8] + "…" : e.AuditRootHash)
+                        </td>
+                        <td class="font-monospace text-muted" style="font-size:0.68rem" title="@e.PeerAuditRootHash">
+                            @(e.PeerAuditRootHash is not null && e.PeerAuditRootHash.Length > 8 ? e.PeerAuditRootHash[..8] + "…" : e.PeerAuditRootHash)
+                        </td>
+                    </tr>
+                }
+                @if (!State.Log.Any())
+                {
+                    <tr><td colspan="9" class="text-muted text-center py-2">No activity yet.</td></tr>
+                }
+            </tbody>
+        </table>
     </div>
 </div>
 

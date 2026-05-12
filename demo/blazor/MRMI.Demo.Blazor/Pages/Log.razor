@@ -24,10 +24,15 @@
             <thead>
                 <tr>
                     <th style="width:90px">Time</th>
-                    <th style="width:90px">Direction</th>
-                    <th style="width:75px">Decision</th>
-                    <th>Reason</th>
-                    <th style="width:150px" class="font-monospace">Key</th>
+                    <th style="width:88px">Direction</th>
+                    <th style="width:70px">Decision</th>
+                    <th style="width:120px">Reason</th>
+                    <th>Message</th>
+                    <th style="width:75px">Profile</th>
+                    <th style="width:95px">Node</th>
+                    <th style="width:90px" title="Local audit root hash">Root hash</th>
+                    <th style="width:90px" title="Peer audit root hash">Peer hash</th>
+                    <th style="width:145px" class="font-monospace">Key</th>
                 </tr>
             </thead>
             <tbody>
@@ -37,14 +42,23 @@
                         <td>@e.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
                         <td>@e.Direction</td>
                         <td><span class="badge @BadgeClass(e.Decision)">@e.Decision</span></td>
-                        <td>@e.Reason</td>
-                        <td class="text-muted" style="font-size:0.7rem">@e.IdempotencyKey</td>
+                        <td class="text-muted">@e.Reason</td>
+                        <td>@(e.Payload is not null ? (e.Payload.Length > 50 ? e.Payload[..50] + "…" : e.Payload) : "")</td>
+                        <td class="text-muted">@e.Profile</td>
+                        <td class="text-muted">@e.NodeId</td>
+                        <td class="font-monospace text-muted" style="font-size:0.68rem" title="@e.AuditRootHash">
+                            @(e.AuditRootHash is not null && e.AuditRootHash.Length > 8 ? e.AuditRootHash[..8] + "…" : e.AuditRootHash)
+                        </td>
+                        <td class="font-monospace text-muted" style="font-size:0.68rem" title="@e.PeerAuditRootHash">
+                            @(e.PeerAuditRootHash is not null && e.PeerAuditRootHash.Length > 8 ? e.PeerAuditRootHash[..8] + "…" : e.PeerAuditRootHash)
+                        </td>
+                        <td class="text-muted font-monospace" style="font-size:0.68rem">@e.IdempotencyKey</td>
                     </tr>
                 }
                 @if (!Filtered.Any())
                 {
                     <tr>
-                        <td colspan="5" class="text-muted text-center py-3">
+                        <td colspan="10" class="text-muted text-center py-3">
                             No entries yet — send a message from the Chat page.
                         </td>
                     </tr>

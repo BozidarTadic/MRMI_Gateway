@@ -28,6 +28,8 @@ public sealed class DemoState : IAsyncDisposable
 
     private CancellationTokenSource? _cts;
     private static int _seqCounter;
+    private static readonly string _sessionPrefix =
+        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString("x");
 
     public DemoState(IConfiguration config)
     {
@@ -54,7 +56,7 @@ public sealed class DemoState : IAsyncDisposable
                 await foreach (var env in client.StreamAsync(ct))
                 {
                     var text = env.Payload?.Length > 0
-                        ? System.Text.Encoding.UTF8.GetString(env.Payload)
+                        ? System.Text.Encoding.UTF8.GetString(env.Payload).TrimEnd('\0')
                         : "(empty)";
 
                     var msg = new ChatMessage(
@@ -90,7 +92,7 @@ public sealed class DemoState : IAsyncDisposable
     public async Task<(string Decision, string Reason)> SendAsync(
         string fromRegion, string toRegion, string text)
     {
-        var key = $"demo-{Interlocked.Increment(ref _seqCounter):D6}";
+        var key = $"demo-{_sessionPrefix}-{Interlocked.Increment(ref _seqCounter):D4}";
         var client = fromRegion == RsRegion ? RsClient : RuClient;
 
         try
@@ -104,10 +106,21 @@ public sealed class DemoState : IAsyncDisposable
                 Payload = System.Text.Encoding.UTF8.GetBytes(text),
             });
 
+            var entry = new LogEntry(
+                DateTimeOffset.UtcNow,
+                $"{fromRegion} → {toRegion}",
+                result.Decision,
+                result.Reason,
+                key,
+                Payload: text,
+                AuditRootHash: result.AuditRootHash,
+                PeerAuditRootHash: result.PeerAuditRootHash,
+                Profile: result.Profile,
+                NodeId: result.NodeId);
+
             lock (_lock)
             {
-                _log.Insert(0, new LogEntry(DateTimeOffset.UtcNow,
-                    $"{fromRegion} → {toRegion}", result.Decision, result.Reason, key));
+                _log.Insert(0, entry);
                 if (_log.Count > 200) _log.RemoveAt(_log.Count - 1);
             }
             OnChanged?.Invoke();
@@ -163,7 +176,12 @@ public sealed record LogEntry(
     string Direction,
     string Decision,
     string Reason,
-    string IdempotencyKey
+    string IdempotencyKey,
+    string? Payload = null,
+    string? AuditRootHash = null,
+    string? PeerAuditRootHash = null,
+    string? Profile = null,
+    string? NodeId = null
 )
 {
     public bool IsAllow => Decision == "ALLOW";

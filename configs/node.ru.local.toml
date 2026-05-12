@@ -38,3 +38,18 @@ insecure = true
 [peers.RS]
 addr       = "localhost:7777"
 node_scope = "regional"
+
+[apps.mrmi-demo]
+auto_accept = "auto_all"
+
+[apps.mrmi-demo.users.ivan-01]
+display_hint = "Иван Иванов"
+region       = "RU"
+
+[apps.mrmi-demo.users.olga-01]
+display_hint = "Ольга Смирнова"
+region       = "RU"
+
+[apps.mrmi-demo.users.dmitri-01]
+display_hint = "Дмитрий Козлов"
+region       = "RU"
