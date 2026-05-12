@@ -1,0 +1,163 @@
+@page "/discovery"
+@using MRMI.Gateway.Client
+@inject DemoState State
+
+<PageTitle>User Discovery</PageTitle>
+
+<div class="discovery-layout">
+    <h5 class="mb-3">User Discovery</h5>
+
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label form-label-sm mb-1">Search from</label>
+                    <select class="form-select form-select-sm" style="width:auto" @bind="_fromNode">
+                        <option value="@DemoState.RsRegion">&#127480;&#127479; RS — @DemoState.RsUser</option>
+                        <option value="@DemoState.RuRegion">&#127479;&#127482; RU — @DemoState.RuUser</option>
+                    </select>
+                </div>
+                <div class="col">
+                    <label class="form-label form-label-sm mb-1">Display name or app ID</label>
+                    <input class="form-control form-control-sm" @bind="_query" @bind:event="oninput"
+                           @onkeydown="QueryKeyDown"
+                           placeholder="e.g. Иван or ivan-app-01" />
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary btn-sm" @onclick="Search" disabled="@_searching">
+                        @(_searching ? "Searching…" : "Search")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-warning small py-2">@_error</div>
+    }
+
+    @if (_results.Count > 0)
+    {
+        <div class="card">
+            <div class="card-header small py-1">@_results.Count result(s)</div>
+            <ul class="list-group list-group-flush">
+                @foreach (var r in _results)
+                {
+                    var name = string.IsNullOrEmpty(r.DisplayHint) ? r.UserId : r.DisplayHint;
+                    <li class="list-group-item py-2">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>@name</strong>
+                                <span class="badge bg-secondary ms-1">@r.Region</span>
+                                <div class="small text-muted mt-1">
+                                    app: <code>@r.AppId</code> &middot; node: <code>@r.NodeId</code>
+                                </div>
+                                @if (!string.IsNullOrEmpty(r.OpaqueToken))
+                                {
+                                    <div class="small text-muted font-monospace">
+                                        token: @r.OpaqueToken[..Math.Min(20, r.OpaqueToken.Length)]…
+                                        &nbsp;(expires @DateTimeOffset.FromUnixTimeSeconds(r.TokenExpires).ToLocalTime().ToString("HH:mm:ss"))
+                                    </div>
+                                }
+                            </div>
+                            <div class="d-flex flex-column align-items-end gap-1">
+                                <button class="btn btn-sm btn-outline-primary"
+                                        @onclick="() => Connect(r)"
+                                        disabled="@(_connecting == r.OpaqueToken || string.IsNullOrEmpty(r.OpaqueToken))">
+                                    @(_connecting == r.OpaqueToken ? "Connecting…" : "Connect")
+                                </button>
+                                @if (_connectResults.TryGetValue(r.OpaqueToken, out var cr))
+                                {
+                                    var badgeClass = cr.IsAccepted ? "bg-success"
+                                        : cr.Status == "PENDING" ? "bg-warning text-dark" : "bg-danger";
+                                    <span class="badge @badgeClass">@cr.Status</span>
+                                    @if (cr.SessionId is not null)
+                                    {
+                                        <div class="small text-muted font-monospace">
+                                            session: @cr.SessionId[..Math.Min(12, cr.SessionId.Length)]…
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+    else if (_searched && _error is null)
+    {
+        <p class="text-muted small">No users found for <em>@_lastQuery</em>.</p>
+    }
+
+    <div class="mt-4 text-muted small">
+        <strong>How it works:</strong> The node fans out a <code>BroadcastDiscovery</code> RPC with hop-limited gossip
+        across the network. Each peer that matches returns an opaque single-use token valid for 5 minutes.
+        Clicking <em>Connect</em> uses that token to initiate a <code>ConnectRequest</code> — the target node
+        applies its auto-accept policy (MANUAL / AUTO_MUTUAL / AUTO_WHITELIST / AUTO_ALL).
+    </div>
+</div>
+
+@code {
+    private string _fromNode = DemoState.RsRegion;
+    private string _query = "";
+    private string _lastQuery = "";
+    private bool _searching;
+    private bool _searched;
+    private string? _error;
+    private List<DiscoveryResult> _results = [];
+    private string? _connecting;
+    private readonly Dictionary<string, ConnectResult> _connectResults = [];
+
+    private async Task QueryKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Search();
+    }
+
+    private async Task Search()
+    {
+        if (string.IsNullOrWhiteSpace(_query)) return;
+        _searching = true;
+        _error = null;
+        _results = [];
+        _searched = false;
+        _lastQuery = _query;
+
+        try
+        {
+            var client = _fromNode == DemoState.RsRegion ? State.RsClient : State.RuClient;
+            var found = await client.DiscoverAsync(_query);
+            _results = [.. found];
+            _searched = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Discovery failed: {ex.Message}";
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+
+    private async Task Connect(DiscoveryResult result)
+    {
+        _connecting = result.OpaqueToken;
+        try
+        {
+            var client = _fromNode == DemoState.RsRegion ? State.RsClient : State.RuClient;
+            var requesterId = _fromNode == DemoState.RsRegion ? "marko-01" : "ivan-01";
+            var cr = await client.ConnectAsync(result.OpaqueToken, requesterId, _fromNode);
+            _connectResults[result.OpaqueToken] = cr;
+        }
+        catch (Exception ex)
+        {
+            _connectResults[result.OpaqueToken] = new ConnectResult { Status = $"ERROR: {ex.Message[..Math.Min(60, ex.Message.Length)]}" };
+        }
+        finally
+        {
+            _connecting = null;
+        }
+    }
+}

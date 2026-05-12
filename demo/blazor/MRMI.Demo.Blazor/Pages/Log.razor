@@ -1,0 +1,82 @@
+@page "/log"
+@inject DemoState State
+@implements IDisposable
+
+<PageTitle>Corridor Log</PageTitle>
+
+<div class="log-layout">
+    <div class="d-flex align-items-center mb-2 gap-2 flex-wrap">
+        <h5 class="mb-0 me-1">Corridor Log</h5>
+
+        <div class="btn-group btn-group-sm">
+            <button class="btn @(_filter == "ALL"   ? "btn-secondary"             : "btn-outline-secondary")" @onclick='() => _filter = "ALL"'>All</button>
+            <button class="btn @(_filter == "ALLOW" ? "btn-success"               : "btn-outline-success")"   @onclick='() => _filter = "ALLOW"'>Allow</button>
+            <button class="btn @(_filter == "DENY"  ? "btn-danger"                : "btn-outline-danger")"    @onclick='() => _filter = "DENY"'>Deny</button>
+            <button class="btn @(_filter == "ERROR" ? "btn-warning text-dark"     : "btn-outline-warning")"   @onclick='() => _filter = "ERROR"'>Error</button>
+        </div>
+
+        <span class="text-muted small ms-1">@Filtered.Count() entries</span>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="State.ClearLog">Clear</button>
+    </div>
+
+    <div class="corridor-log">
+        <table class="table table-sm table-dark mb-0 small">
+            <thead>
+                <tr>
+                    <th style="width:90px">Time</th>
+                    <th style="width:90px">Direction</th>
+                    <th style="width:75px">Decision</th>
+                    <th>Reason</th>
+                    <th style="width:150px" class="font-monospace">Key</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in Filtered)
+                {
+                    <tr class="@RowClass(e.Decision)">
+                        <td>@e.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
+                        <td>@e.Direction</td>
+                        <td><span class="badge @BadgeClass(e.Decision)">@e.Decision</span></td>
+                        <td>@e.Reason</td>
+                        <td class="text-muted" style="font-size:0.7rem">@e.IdempotencyKey</td>
+                    </tr>
+                }
+                @if (!Filtered.Any())
+                {
+                    <tr>
+                        <td colspan="5" class="text-muted text-center py-3">
+                            No entries yet — send a message from the Chat page.
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private string _filter = "ALL";
+
+    private IEnumerable<LogEntry> Filtered => _filter == "ALL"
+        ? State.Log
+        : State.Log.Where(e => e.Decision == _filter);
+
+    private static string RowClass(string decision) => decision switch
+    {
+        "DENY"  => "table-danger",
+        "ERROR" => "table-warning",
+        _       => "",
+    };
+
+    private static string BadgeClass(string decision) => decision switch
+    {
+        "ALLOW" => "bg-success",
+        "DENY"  => "bg-danger",
+        "ERROR" => "bg-warning text-dark",
+        _       => "bg-secondary",
+    };
+
+    protected override void OnInitialized() => State.OnChanged += OnStateChanged;
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}

@@ -5,10 +5,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
-
-// Named clients: "rs" → RS gateway, "ru" → RU gateway
-builder.Services.AddHttpClient("rs");
-builder.Services.AddHttpClient("ru");
 builder.Services.AddSingleton<DemoState>();
 
 var app = builder.Build();
@@ -23,5 +19,9 @@ app.UseStaticFiles();
 app.UseRouting();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
+
+// Start SSE background streams immediately so messages arrive as soon as
+// any browser tab connects — not just when the Chat page is first opened.
+app.Services.GetRequiredService<DemoState>().StartStreaming();
 
 app.Run();
