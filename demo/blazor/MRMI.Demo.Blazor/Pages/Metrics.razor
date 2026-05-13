@@ -1,0 +1,173 @@
+@page "/metrics"
+@inject DemoState State
+@implements IDisposable
+
+<PageTitle>Metrics</PageTitle>
+
+@{
+    var metrics = State.GetMetrics();
+}
+
+<div class="metrics-layout">
+    <div class="metrics-header">
+        <div>
+            <h5 class="mb-1">Metrics</h5>
+            <div class="text-muted small">Envelope flow, visible data, and jurisdiction request outcomes.</div>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="State.ClearLog">Clear log + requests</button>
+    </div>
+
+    <div class="metric-grid">
+        <div class="metric-tile">
+            <div class="metric-label">Envelopes</div>
+            <div class="metric-value">@metrics.TotalEnvelopes</div>
+            <div class="metric-sub">@metrics.AllowedEnvelopes allow / @metrics.DeniedEnvelopes deny / @metrics.ErrorEnvelopes error</div>
+        </div>
+        <div class="metric-tile">
+            <div class="metric-label">RS visible messages</div>
+            <div class="metric-value">@metrics.RsVisibleMessages</div>
+            <div class="metric-sub">payloads visible from Serbian node context</div>
+        </div>
+        <div class="metric-tile">
+            <div class="metric-label">RU visible messages</div>
+            <div class="metric-value">@metrics.RuVisibleMessages</div>
+            <div class="metric-sub">payloads visible from Russian node context</div>
+        </div>
+        <div class="metric-tile">
+            <div class="metric-label">Jurisdiction requests</div>
+            <div class="metric-value">@metrics.JurisdictionRequests</div>
+            <div class="metric-sub">@metrics.AllowedJurisdictionRequests allow / @metrics.DeniedJurisdictionRequests deny</div>
+        </div>
+        <div class="metric-tile">
+            <div class="metric-label">Payloads exposed</div>
+            <div class="metric-value">@metrics.PayloadsExposed</div>
+            <div class="metric-sub">@metrics.BytesExposed bytes returned to requesters</div>
+        </div>
+        <div class="metric-tile">
+            <div class="metric-label">Latest audit roots</div>
+            <div class="metric-hash" title="@metrics.LatestAuditRootHash">@ShortHash(metrics.LatestAuditRootHash)</div>
+            <div class="metric-sub" title="@metrics.LatestPeerAuditRootHash">peer @ShortHash(metrics.LatestPeerAuditRootHash)</div>
+        </div>
+    </div>
+
+    <div class="request-panel">
+        <div class="request-controls">
+            <div class="control-block">
+                <label class="form-label small text-muted">Requester jurisdiction</label>
+                <select class="form-select form-select-sm" @bind="_requesterRegion">
+                    @foreach (var region in Regions)
+                    {
+                        <option value="@region">@region</option>
+                    }
+                </select>
+            </div>
+            <div class="control-block">
+                <label class="form-label small text-muted">Data held by</label>
+                <select class="form-select form-select-sm" @bind="_dataRegion">
+                    @foreach (var region in Regions)
+                    {
+                        <option value="@region">@region</option>
+                    }
+                </select>
+            </div>
+            <div class="control-block">
+                <label class="form-label small text-muted">Data class</label>
+                <select class="form-select form-select-sm" @bind="_dataClass">
+                    <option>Messages</option>
+                    <option>Audit metadata</option>
+                </select>
+            </div>
+            <button class="btn btn-sm btn-primary request-button" @onclick="SubmitRequest">Run request</button>
+        </div>
+
+        @if (_latestRequest is not null)
+        {
+            <div class="request-result @(_latestRequest.Decision == "ALLOW" ? "request-allow" : "request-deny")">
+                <div>
+                    <span class="badge @(_latestRequest.Decision == "ALLOW" ? "bg-success" : "bg-danger")">@_latestRequest.Decision</span>
+                    <span class="ms-2">@_latestRequest.RequesterRegion requests @_latestRequest.DataClass.ToLowerInvariant() from @_latestRequest.DataRegion</span>
+                </div>
+                <div class="small mt-1">@_latestRequest.Reason</div>
+                <div class="small mt-1 text-muted">@_latestRequest.ReturnedPayloadCount payloads / @_latestRequest.ReturnedBytes bytes returned</div>
+            </div>
+        }
+    </div>
+
+    <div class="request-history">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th style="width:90px">Time</th>
+                    <th style="width:115px">Requester</th>
+                    <th style="width:95px">Holder</th>
+                    <th style="width:115px">Class</th>
+                    <th style="width:80px">Decision</th>
+                    <th style="width:110px">Returned</th>
+                    <th>Data actually returned</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var request in State.JurisdictionRequests)
+                {
+                    <tr>
+                        <td>@request.Timestamp.ToLocalTime().ToString("HH:mm:ss")</td>
+                        <td>@request.RequesterRegion</td>
+                        <td>@request.DataRegion</td>
+                        <td>@request.DataClass</td>
+                        <td><span class="badge @(request.Decision == "ALLOW" ? "bg-success" : "bg-danger")">@request.Decision</span></td>
+                        <td>@request.ReturnedPayloadCount payloads</td>
+                        <td>
+                            @if (!request.ReturnedData.Any())
+                            {
+                                <span class="text-muted">No payload or metadata returned.</span>
+                            }
+                            else
+                            {
+                                <div class="returned-list">
+                                    @foreach (var item in request.ReturnedData)
+                                    {
+                                        <div class="returned-item">
+                                            <span class="returned-kind">@item.Kind</span>
+                                            <span class="returned-direction">@item.Direction</span>
+                                            <span class="returned-payload">@(item.Payload ?? "[payload redacted]")</span>
+                                            <span class="returned-meta">@item.Metadata</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (!State.JurisdictionRequests.Any())
+                {
+                    <tr>
+                        <td colspan="7" class="text-muted text-center py-3">
+                            Run a jurisdiction request after sending messages in the Chat tab.
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private static readonly string[] Regions = ["RS", "RU", "BY", "KZ", "AM", "EU", "US"];
+    private string _requesterRegion = DemoState.RsRegion;
+    private string _dataRegion = DemoState.RuRegion;
+    private string _dataClass = "Messages";
+    private JurisdictionRequest? _latestRequest;
+
+    protected override void OnInitialized() => State.OnChanged += OnStateChanged;
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    private void SubmitRequest()
+    {
+        _latestRequest = State.SubmitJurisdictionRequest(_requesterRegion, _dataRegion, _dataClass);
+    }
+
+    private static string ShortHash(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "none" : value.Length > 12 ? value[..12] + "..." : value;
+
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}
