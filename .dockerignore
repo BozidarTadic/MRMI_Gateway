@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.claude
+**/bin
+**/obj
+**/.vs
+**/.vscode
+*.exe
+*.exe~
+*.pdb
+*.user
+*.suo
+test
+docs

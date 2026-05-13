@@ -16,6 +16,7 @@ import (
 	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/discovery"
 	"MRMI_Gateway/internal/identity"
+	"MRMI_Gateway/internal/metrics"
 	"MRMI_Gateway/internal/peercache"
 	"MRMI_Gateway/internal/peerdiscovery"
 	"MRMI_Gateway/internal/policy"
@@ -27,17 +28,18 @@ import (
 // gatewayAdapter implements GatewayService by delegating to core.Gateway.
 // It is the only place that translates between gRPC transport types and domain types.
 type gatewayAdapter struct {
-	gw            *core.Gateway
-	seqRecv       *session.Tracker
-	verifyKey     ed25519.PublicKey      // nil = skip verification (insecure mode)
-	peerCache     *peercache.Cache       // nil = no gossip storage
-	tokenStore    *token.Store           // nil = discovery/connect disabled
-	broadcaster   *discovery.Broadcaster // nil = no peer fan-out
-	connectRes    *connect.Resolver      // nil = always PENDING
-	policyEng     *policy.Engine         // nil = no isolation check
-	peerRegistry    *peerdiscovery.Registry // nil = no dynamic peer discovery
+	gw               *core.Gateway
+	seqRecv          *session.Tracker
+	verifyKey        ed25519.PublicKey       // nil = skip verification (insecure mode)
+	peerCache        *peercache.Cache        // nil = no gossip storage
+	tokenStore       *token.Store            // nil = discovery/connect disabled
+	broadcaster      *discovery.Broadcaster  // nil = no peer fan-out
+	connectRes       *connect.Resolver       // nil = always PENDING
+	policyEng        *policy.Engine          // nil = no isolation check
+	peerRegistry     *peerdiscovery.Registry // nil = no dynamic peer discovery
 	discoveryLimiter *ratelimit.Limiter      // nil = no rate limiting
-	nodeCfg         config.Config
+	metricsReg       *metrics.Registry       // nil = no metrics
+	nodeCfg          config.Config
 }
 
 // NewAdapter wraps a core.Gateway so it satisfies the GatewayService interface.
@@ -63,7 +65,8 @@ type DiscoveryDeps struct {
 	ConnectRes       *connect.Resolver
 	PolicyEng        *policy.Engine
 	PeerRegistry     *peerdiscovery.Registry
-	DiscoveryLimiter *ratelimit.Limiter // nil = unlimited
+	DiscoveryLimiter *ratelimit.Limiter  // nil = unlimited
+	Metrics          *metrics.Registry   // nil = no metrics
 	NodeCfg          config.Config
 }
 
@@ -81,6 +84,7 @@ func NewAdapterWithDiscovery(gw *core.Gateway, verifyKey ed25519.PublicKey, peer
 		policyEng:        deps.PolicyEng,
 		peerRegistry:     deps.PeerRegistry,
 		discoveryLimiter: deps.DiscoveryLimiter,
+		metricsReg:       deps.Metrics,
 		nodeCfg:          deps.NodeCfg,
 	}
 }
@@ -172,6 +176,9 @@ func (a *gatewayAdapter) BroadcastDiscovery(ctx context.Context, req *DiscoveryR
 
 	// Per-origin-node rate limit (ADR §5.1 — prevents discovery flooding).
 	if a.discoveryLimiter != nil && !a.discoveryLimiter.Allow(req.OriginNodeID) {
+		if a.metricsReg != nil {
+			a.metricsReg.IncRateLimitDeny()
+		}
 		return nil, status.Errorf(codes.ResourceExhausted, "discovery rate limit exceeded for node %q", req.OriginNodeID)
 	}
 
