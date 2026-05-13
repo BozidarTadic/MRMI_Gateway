@@ -36,14 +36,3 @@ insecure = true
 [peers.RS]
 addr       = "localhost:7787"
 node_scope = "regional"
-
-[apps.chat]
-auto_accept = "auto_all"
-
-[apps.chat.users.ivan]
-display_hint = "Ivan (RU)"
-region       = "RU"
-
-[apps.chat.users.maria]
-display_hint = "Maria (RU)"
-region       = "RU"
