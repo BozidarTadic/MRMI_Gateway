@@ -74,13 +74,15 @@ type WebhookNotifier interface {
 }
 
 type Gateway struct {
-	cfg       config.Config
-	policy    *policy.Engine
-	audit     *audit.Log
-	dedup     *dedup.Index
-	forwarder Forwarder // nil = forwarding disabled
-	onAllow   func(env Envelope)
-	notifier  WebhookNotifier // nil = webhooks disabled
+	cfg         config.Config
+	policy      *policy.Engine
+	audit       *audit.Log
+	dedup       *dedup.Index
+	forwarder   Forwarder // nil = forwarding disabled
+	onAllow     func(env Envelope)
+	onDeny      func(reason string)
+	onDuplicate func()
+	notifier    WebhookNotifier // nil = webhooks disabled
 }
 
 // NewGateway creates a Gateway. Pass nil for forwarder to disable outbound forwarding
@@ -100,6 +102,12 @@ func NewGateway(cfg config.Config, policyEngine *policy.Engine, auditLog *audit.
 func (g *Gateway) SetOnAllow(fn func(env Envelope)) {
 	g.onAllow = fn
 }
+
+// SetOnDeny registers a callback invoked after each DENY decision.
+func (g *Gateway) SetOnDeny(fn func(reason string)) { g.onDeny = fn }
+
+// SetOnDuplicate registers a callback invoked after each DUPLICATE decision.
+func (g *Gateway) SetOnDuplicate(fn func()) { g.onDuplicate = fn }
 
 // SetNotifier registers the webhook notifier called after each ALLOW decision.
 func (g *Gateway) SetNotifier(n WebhookNotifier) {
@@ -126,6 +134,9 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 	if g.dedup.SeenOrAdd(req.Envelope.IdempotencyKey) {
 		g.audit.Append(g.cfg, audit.DecisionDuplicate, "DUPLICATE_IDEMPOTENCY_KEY",
 			req.Envelope.TrustTier, req.Envelope.SenderRegion, req.Envelope.RecipientRegion)
+		if g.onDuplicate != nil {
+			g.onDuplicate()
+		}
 		return SendResponse{
 			Decision:      DecisionDuplicate,
 			Reason:        "idempotency_key already processed",
@@ -155,6 +166,10 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 				env := applyPadding(req.Envelope, g.cfg.Profile.PaddingBucket)
 				peerRootHash, _ = g.forwarder.Forward(ctx, env)
 			}
+		}
+	} else {
+		if g.onDeny != nil {
+			g.onDeny(result.Reason)
 		}
 	}
 

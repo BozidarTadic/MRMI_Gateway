@@ -23,6 +23,7 @@ import (
 	"MRMI_Gateway/internal/hotreload"
 	"MRMI_Gateway/internal/identity"
 	"MRMI_Gateway/internal/inbox"
+	"MRMI_Gateway/internal/metrics"
 	"MRMI_Gateway/internal/peercache"
 	"MRMI_Gateway/internal/peerdiscovery"
 	"MRMI_Gateway/internal/policy"
@@ -150,6 +151,43 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		go runTransitRetry(ctx, tc, dlq, auditLog, cfg)
 	}
 
+	// Metrics: build registry with gauge readers for DLQ, transit cache, and peer registry.
+	// peerRegistry is created later; use a stable pointer via closure.
+	var peerRegistryRef *peerdiscovery.Registry
+	metricsReg := metrics.New(
+		dlq.Size,
+		func() int {
+			if tc != nil {
+				return tc.Len()
+			}
+			return 0
+		},
+		func() int {
+			if peerRegistryRef != nil {
+				return len(peerRegistryRef.Known())
+			}
+			return 0
+		},
+	)
+
+	if cfg.Network.MetricsAddr != "" {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", metricsReg.Handler())
+		metricsSrv := &http.Server{Addr: cfg.Network.MetricsAddr, Handler: mux}
+		go func() {
+			log.Printf("[metrics] serving /metrics on %s", cfg.Network.MetricsAddr)
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("[metrics] server error: %v", err)
+			}
+		}()
+		go func() {
+			<-ctx.Done()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = metricsSrv.Shutdown(shutdownCtx)
+		}()
+	}
+
 	var fwd core.Forwarder
 	if len(cfg.Network.Peers) > 0 {
 		fwd = delivery.NewForwarder(cfg, dlq, tc, func(ctx context.Context, addr string, env core.Envelope) (string, error) {
@@ -191,6 +229,8 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	}
 
 	gw := core.NewGateway(cfg, engine, auditLog, dedupIndex, fwd)
+	gw.SetOnDeny(metricsReg.IncDeny)
+	gw.SetOnDuplicate(metricsReg.IncDuplicate)
 
 	if len(cfg.Network.Peers) > 0 {
 		peers := make([]config.PeerConfig, 0, len(cfg.Network.Peers))
@@ -215,6 +255,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	// Inbox: fan-out broadcaster for SSE clients.
 	msgInbox := inbox.New()
 	gw.SetOnAllow(func(env core.Envelope) {
+		metricsReg.IncAllow()
 		msgInbox.Publish(inbox.Event{
 			IdempotencyKey:  env.IdempotencyKey,
 			SenderRegion:    env.SenderRegion,
@@ -300,6 +341,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 
 	// Sprint 8: dynamic peer discovery registry + gossip.
 	peerRegistry := peerdiscovery.New()
+	peerRegistryRef = peerRegistry // expose to metrics gauge closure
 	gossipInterval := cfg.Network.PeerGossipInterval
 	if gossipInterval <= 0 {
 		gossipInterval = 120 * time.Second
@@ -325,6 +367,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		PolicyEng:        engine,
 		PeerRegistry:     peerRegistry,
 		DiscoveryLimiter: discoveryLimiter,
+		Metrics:          metricsReg,
 		NodeCfg:          cfg,
 	}
 
