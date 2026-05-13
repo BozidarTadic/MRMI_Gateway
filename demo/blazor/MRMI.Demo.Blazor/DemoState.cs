@@ -150,9 +150,6 @@ public sealed class DemoState : IAsyncDisposable
     }
 
     public IReadOnlyList<LogEntry> Log { get { lock (_lock) return _log.AsReadOnly(); } }
-    public IReadOnlyList<JurisdictionRequest> JurisdictionRequests { get { lock (_lock) return [.. _jurisdictionRequests]; } }
-
-    private readonly List<JurisdictionRequest> _jurisdictionRequests = [];
 
     public async Task<(string Decision, string Reason)> SendAsync(
         string rsId, string ruId, string fromRegion, string text)
@@ -209,119 +206,9 @@ public sealed class DemoState : IAsyncDisposable
 
     public void ClearLog()
     {
-        lock (_lock)
-        {
-            _log.Clear();
-            _jurisdictionRequests.Clear();
-        }
+        lock (_lock) { _log.Clear(); }
         OnChanged?.Invoke();
     }
-
-    public DemoMetrics GetMetrics()
-    {
-        lock (_lock)
-        {
-            var entries = _log.ToList();
-            var messages = _chats.Values.SelectMany(m => m).ToList();
-            var requestCount = _jurisdictionRequests.Count;
-            var allowedRequests = _jurisdictionRequests.Count(r => r.Decision == "ALLOW");
-            var exposedPayloads = _jurisdictionRequests.Sum(r => r.ReturnedPayloadCount);
-            var exposedBytes = _jurisdictionRequests.Sum(r => r.ReturnedBytes);
-
-            return new DemoMetrics(
-                TotalEnvelopes: entries.Count,
-                AllowedEnvelopes: entries.Count(e => e.Decision == "ALLOW"),
-                DeniedEnvelopes: entries.Count(e => e.Decision == "DENY"),
-                ErrorEnvelopes: entries.Count(e => e.Decision == "ERROR"),
-                RsVisibleMessages: messages.Count(m => m.FromRegion == RsRegion || m.ToRegion == RsRegion),
-                RuVisibleMessages: messages.Count(m => m.FromRegion == RuRegion || m.ToRegion == RuRegion),
-                JurisdictionRequests: requestCount,
-                AllowedJurisdictionRequests: allowedRequests,
-                DeniedJurisdictionRequests: requestCount - allowedRequests,
-                PayloadsExposed: exposedPayloads,
-                BytesExposed: exposedBytes,
-                LatestAuditRootHash: entries.FirstOrDefault(e => !string.IsNullOrWhiteSpace(e.AuditRootHash))?.AuditRootHash,
-                LatestPeerAuditRootHash: entries.FirstOrDefault(e => !string.IsNullOrWhiteSpace(e.PeerAuditRootHash))?.PeerAuditRootHash
-            );
-        }
-    }
-
-    public JurisdictionRequest SubmitJurisdictionRequest(string requesterRegion, string dataRegion, string dataClass)
-    {
-        requesterRegion = NormalizeRegion(requesterRegion);
-        dataRegion = NormalizeRegion(dataRegion);
-        dataClass = string.IsNullOrWhiteSpace(dataClass) ? "Messages" : dataClass.Trim();
-
-        JurisdictionRequest request;
-        lock (_lock)
-        {
-            var visible = ResolveVisibleData(requesterRegion, dataRegion, dataClass);
-            var decision = visible.Count > 0 ? "ALLOW" : "DENY";
-            var reason = decision == "ALLOW"
-                ? requesterRegion == dataRegion
-                    ? "local jurisdiction can inspect hosted data"
-                    : "cross-border data exists only for allowed corridor traffic"
-                : "no policy-visible data for requester and data holder";
-
-            request = new JurisdictionRequest(
-                Timestamp: DateTimeOffset.UtcNow,
-                RequesterRegion: requesterRegion,
-                DataRegion: dataRegion,
-                DataClass: dataClass,
-                Decision: decision,
-                Reason: reason,
-                ReturnedPayloadCount: visible.Count(v => v.Payload is not null),
-                ReturnedBytes: visible.Sum(v => v.Payload?.Length ?? 0),
-                ReturnedData: visible);
-
-            _jurisdictionRequests.Insert(0, request);
-            if (_jurisdictionRequests.Count > 100) _jurisdictionRequests.RemoveAt(_jurisdictionRequests.Count - 1);
-        }
-        OnChanged?.Invoke();
-        return request;
-    }
-
-    private IReadOnlyList<ReturnedDataItem> ResolveVisibleData(string requesterRegion, string dataRegion, string dataClass)
-    {
-        if (dataClass.Equals("Audit metadata", StringComparison.OrdinalIgnoreCase))
-        {
-            return _log
-                .Where(e => e.Direction.Contains(dataRegion, StringComparison.OrdinalIgnoreCase))
-                .Take(20)
-                .Select(e => new ReturnedDataItem(
-                    Kind: "audit",
-                    Direction: e.Direction,
-                    Payload: requesterRegion == dataRegion || e.Direction.Contains(requesterRegion, StringComparison.OrdinalIgnoreCase)
-                        ? e.Payload
-                        : null,
-                    Metadata: $"{e.Decision} / {e.Reason} / root {ShortHash(e.AuditRootHash)}"))
-                .ToList();
-        }
-
-        var messages = _chats.Values.SelectMany(m => m)
-            .Where(m => m.FromRegion == dataRegion || m.ToRegion == dataRegion);
-
-        if (requesterRegion != dataRegion)
-        {
-            messages = messages.Where(m => m.FromRegion == requesterRegion || m.ToRegion == requesterRegion);
-        }
-
-        return messages
-            .OrderByDescending(m => m.Timestamp)
-            .Take(20)
-            .Select(m => new ReturnedDataItem(
-                Kind: "message",
-                Direction: $"{m.FromRegion} -> {m.ToRegion}",
-                Payload: m.Text,
-                Metadata: m.IdempotencyKey))
-            .ToList();
-    }
-
-    private static string NormalizeRegion(string value)
-        => string.IsNullOrWhiteSpace(value) ? "RS" : value.Trim().ToUpperInvariant();
-
-    private static string ShortHash(string? value)
-        => string.IsNullOrWhiteSpace(value) ? "none" : value.Length > 10 ? value[..10] : value;
 
     public async ValueTask DisposeAsync()
     {
@@ -360,38 +247,3 @@ public sealed record LogEntry(
 {
     public bool IsAllow => Decision == "ALLOW";
 }
-
-public sealed record DemoMetrics(
-    int TotalEnvelopes,
-    int AllowedEnvelopes,
-    int DeniedEnvelopes,
-    int ErrorEnvelopes,
-    int RsVisibleMessages,
-    int RuVisibleMessages,
-    int JurisdictionRequests,
-    int AllowedJurisdictionRequests,
-    int DeniedJurisdictionRequests,
-    int PayloadsExposed,
-    int BytesExposed,
-    string? LatestAuditRootHash,
-    string? LatestPeerAuditRootHash
-);
-
-public sealed record JurisdictionRequest(
-    DateTimeOffset Timestamp,
-    string RequesterRegion,
-    string DataRegion,
-    string DataClass,
-    string Decision,
-    string Reason,
-    int ReturnedPayloadCount,
-    int ReturnedBytes,
-    IReadOnlyList<ReturnedDataItem> ReturnedData
-);
-
-public sealed record ReturnedDataItem(
-    string Kind,
-    string Direction,
-    string? Payload,
-    string Metadata
-);
