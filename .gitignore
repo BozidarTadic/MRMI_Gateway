@@ -15,6 +15,7 @@ vendor/
 # IDE
 .idea/
 .vscode/
+.vs/
 *.swp
 *.swo
 
@@ -29,6 +30,10 @@ __pycache__/
 
 # Claude Code local settings
 .claude/settings.local.json
+.mcp.json
+
+# Runtime logs
+logs/
 
 # Environment / secrets
 *.env
