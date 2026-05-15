@@ -6,6 +6,8 @@ public sealed class DemoState : IAsyncDisposable
 {
     public MrmiClient RsClient { get; }
     public MrmiClient RuClient { get; }
+    public string RsBaseUrl { get; }
+    public string RuBaseUrl { get; }
 
     public const string RsRegion = "RS";
     public const string RuRegion = "RU";
@@ -33,10 +35,10 @@ public sealed class DemoState : IAsyncDisposable
 
     public DemoState(IConfiguration config)
     {
-        var rsUrl = config["Demo:RsUrl"] ?? "http://localhost:8080";
-        var ruUrl = config["Demo:RuUrl"] ?? "http://localhost:8081";
-        RsClient = new MrmiClient(new MrmiClientOptions { BaseUrl = rsUrl });
-        RuClient = new MrmiClient(new MrmiClientOptions { BaseUrl = ruUrl });
+        RsBaseUrl = config["Demo:RsUrl"] ?? "http://localhost:8080";
+        RuBaseUrl = config["Demo:RuUrl"] ?? "http://localhost:8081";
+        RsClient = new MrmiClient(new MrmiClientOptions { BaseUrl = RsBaseUrl });
+        RuClient = new MrmiClient(new MrmiClientOptions { BaseUrl = RuBaseUrl });
     }
 
     public async Task LoadUsersAsync()
@@ -157,7 +159,98 @@ public sealed class DemoState : IAsyncDisposable
         var toRegion = fromRegion == RsRegion ? RuRegion : RsRegion;
         var key = $"demo-{_sessionPrefix}:{rsId}:{ruId}:{Interlocked.Increment(ref _seqCounter):D6}";
         var client = fromRegion == RsRegion ? RsClient : RuClient;
+        return await SendEnvelopeAsync(client, key, fromRegion, toRegion, 1, text);
+    }
 
+    public async Task<ScenarioResult> RunScenarioAsync(DemoScenario scenario)
+    {
+        return scenario switch
+        {
+            DemoScenario.AllowedRsToRu => await RunSingleScenarioAsync(
+                "Allowed RS -> RU",
+                RsClient,
+                $"scenario-{_sessionPrefix}:allow:{Interlocked.Increment(ref _seqCounter):D6}",
+                RsRegion,
+                RuRegion,
+                1,
+                "Allowed demo payload"),
+
+            DemoScenario.DeniedBlockedJurisdiction => await RunSingleScenarioAsync(
+                "Denied RS -> US",
+                RsClient,
+                $"scenario-{_sessionPrefix}:deny-us:{Interlocked.Increment(ref _seqCounter):D6}",
+                RsRegion,
+                "US",
+                1,
+                "This should not leave the allowed corridor"),
+
+            DemoScenario.DuplicateIdempotency => await RunDuplicateScenarioAsync(),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null),
+        };
+    }
+
+    public async Task<IReadOnlyList<NodeSnapshot>> LoadNodeSnapshotsAsync()
+    {
+        var rsTask = LoadNodeSnapshotAsync("RS", RsBaseUrl, RsClient);
+        var ruTask = LoadNodeSnapshotAsync("RU", RuBaseUrl, RuClient);
+        await Task.WhenAll(rsTask, ruTask);
+        return [rsTask.Result, ruTask.Result];
+    }
+
+    private async Task<NodeSnapshot> LoadNodeSnapshotAsync(string label, string baseUrl, MrmiClient client)
+    {
+        try
+        {
+            var statusTask = client.GetStatusAsync();
+            var auditTask = client.GetAuditLatestAsync(8);
+            var dlqTask = client.GetDlqEntriesAsync();
+            await Task.WhenAll(statusTask, auditTask, dlqTask);
+
+            return new NodeSnapshot(
+                Label: label,
+                BaseUrl: baseUrl,
+                Online: true,
+                Status: statusTask.Result,
+                Audit: auditTask.Result,
+                Dlq: dlqTask.Result,
+                Error: null);
+        }
+        catch (Exception ex)
+        {
+            return new NodeSnapshot(label, baseUrl, false, null, [], [], ex.Message);
+        }
+    }
+
+    private async Task<ScenarioResult> RunSingleScenarioAsync(
+        string name,
+        MrmiClient client,
+        string key,
+        string fromRegion,
+        string toRegion,
+        uint trustTier,
+        string text)
+    {
+        var (decision, reason) = await SendEnvelopeAsync(client, key, fromRegion, toRegion, trustTier, text);
+        return new ScenarioResult(name, decision, reason, key);
+    }
+
+    private async Task<ScenarioResult> RunDuplicateScenarioAsync()
+    {
+        var key = $"scenario-{_sessionPrefix}:duplicate:{Interlocked.Increment(ref _seqCounter):D6}";
+        await SendEnvelopeAsync(RsClient, key, RsRegion, RuRegion, 1, "First send with reusable idempotency key");
+        var (decision, reason) = await SendEnvelopeAsync(RsClient, key, RsRegion, RuRegion, 1, "Second send with same idempotency key");
+        return new ScenarioResult("Duplicate idempotency key", decision, reason, key);
+    }
+
+    private async Task<(string Decision, string Reason)> SendEnvelopeAsync(
+        MrmiClient client,
+        string key,
+        string fromRegion,
+        string toRegion,
+        uint trustTier,
+        string text)
+    {
         try
         {
             var result = await client.SendAsync(new SendEnvelopeRequest
@@ -165,7 +258,7 @@ public sealed class DemoState : IAsyncDisposable
                 IdempotencyKey = key,
                 SenderRegion = fromRegion,
                 RecipientRegion = toRegion,
-                TrustTier = 1,
+                TrustTier = trustTier,
                 Payload = System.Text.Encoding.UTF8.GetBytes(text),
             });
 
@@ -221,6 +314,30 @@ public sealed class DemoState : IAsyncDisposable
         RuClient.Dispose();
     }
 }
+
+public enum DemoScenario
+{
+    AllowedRsToRu,
+    DeniedBlockedJurisdiction,
+    DuplicateIdempotency,
+}
+
+public sealed record ScenarioResult(
+    string Name,
+    string Decision,
+    string Reason,
+    string IdempotencyKey
+);
+
+public sealed record NodeSnapshot(
+    string Label,
+    string BaseUrl,
+    bool Online,
+    NodeStatusResponse? Status,
+    IReadOnlyList<AuditEntry> Audit,
+    IReadOnlyList<DlqEntry> Dlq,
+    string? Error
+);
 
 public sealed record ChatMessage(
     DateTimeOffset Timestamp,

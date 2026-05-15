@@ -1,0 +1,135 @@
+@page "/nodes"
+@inject DemoState State
+@implements IDisposable
+
+<PageTitle>Nodes</PageTitle>
+
+<div class="nodes-layout">
+    <div class="nodes-header">
+        <div>
+            <h5 class="mb-1">Nodes</h5>
+            <div class="text-muted small">Open each node dashboard, inspect settings/logs, and run non-happy-path demo cases.</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="LoadNodes" disabled="@_loading">
+            @(_loading ? "Loading..." : "Refresh")
+        </button>
+    </div>
+
+    <div class="node-grid">
+        @foreach (var node in _nodes)
+        {
+            <div class="node-card">
+                <div class="node-card-head">
+                    <div>
+                        <div class="node-title">@node.Label Node</div>
+                        <div class="node-url">@node.BaseUrl</div>
+                    </div>
+                    <span class="node-pill @(node.Online ? "node-online" : "node-offline")">@(node.Online ? "online" : "offline")</span>
+                </div>
+
+                @if (node.Status is not null)
+                {
+                    <div class="node-facts">
+                        <div><span>id</span><strong>@node.Status.NodeId</strong></div>
+                        <div><span>region</span><strong>@node.Status.Region</strong></div>
+                        <div><span>profile</span><strong>@node.Status.Profile</strong></div>
+                        <div><span>law</span><strong>@node.Status.ApplicableLaw</strong></div>
+                    </div>
+                }
+                else
+                {
+                    <div class="node-error">@node.Error</div>
+                }
+
+                <div class="node-actions">
+                    <a class="btn btn-sm btn-primary" href="@($"{node.BaseUrl}/ui/")" target="_blank">Open dashboard</a>
+                    <a class="btn btn-sm btn-outline-secondary" href="@($"{node.BaseUrl}/ui/")" target="_blank">Settings</a>
+                    <a class="btn btn-sm btn-outline-secondary" href="@($"{node.BaseUrl}/ui/")" target="_blank">Audit / DLQ</a>
+                </div>
+
+                <div class="node-section-title">Latest audit</div>
+                <div class="node-mini-log">
+                    @foreach (var entry in node.Audit.Take(4))
+                    {
+                        <div class="node-log-row">
+                            <span class="badge @(entry.Decision == "ALLOW" ? "bg-success" : entry.Decision == "DENY" ? "bg-danger" : "bg-warning text-dark")">@entry.Decision</span>
+                            <span>@entry.SenderRegion -> @entry.RecipientRegion</span>
+                            <span class="text-muted">@entry.Reason</span>
+                        </div>
+                    }
+                    @if (!node.Audit.Any())
+                    {
+                        <div class="text-muted small">No audit entries yet.</div>
+                    }
+                </div>
+
+                <div class="node-section-title">DLQ</div>
+                <div class="text-muted small">@node.Dlq.Count entries</div>
+            </div>
+        }
+    </div>
+
+    <div class="scenario-panel">
+        <div class="section-title">Demo scenarios</div>
+        <div class="scenario-buttons">
+            <button type="button" class="btn btn-sm btn-success" @onclick="() => RunScenario(DemoScenario.AllowedRsToRu)" disabled="@_scenarioRunning">
+                Allowed RS -> RU
+            </button>
+            <button type="button" class="btn btn-sm btn-danger" @onclick="() => RunScenario(DemoScenario.DeniedBlockedJurisdiction)" disabled="@_scenarioRunning">
+                Denied RS -> US
+            </button>
+            <button type="button" class="btn btn-sm btn-warning" @onclick="() => RunScenario(DemoScenario.DuplicateIdempotency)" disabled="@_scenarioRunning">
+                Duplicate key
+            </button>
+        </div>
+
+        @if (_scenarioResult is not null)
+        {
+            <div class="scenario-result">
+                <span class="badge @BadgeClass(_scenarioResult.Decision)">@_scenarioResult.Decision</span>
+                <strong>@_scenarioResult.Name</strong>
+                <span>@_scenarioResult.Reason</span>
+                <code>@_scenarioResult.IdempotencyKey</code>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private IReadOnlyList<NodeSnapshot> _nodes = [];
+    private ScenarioResult? _scenarioResult;
+    private bool _loading;
+    private bool _scenarioRunning;
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.OnChanged += OnStateChanged;
+        await LoadNodes();
+    }
+
+    private async Task LoadNodes()
+    {
+        _loading = true;
+        _nodes = await State.LoadNodeSnapshotsAsync();
+        _loading = false;
+    }
+
+    private async Task RunScenario(DemoScenario scenario)
+    {
+        _scenarioRunning = true;
+        _scenarioResult = await State.RunScenarioAsync(scenario);
+        _nodes = await State.LoadNodeSnapshotsAsync();
+        _scenarioRunning = false;
+    }
+
+    private static string BadgeClass(string decision) => decision switch
+    {
+        "ALLOW" => "bg-success",
+        "DENY" => "bg-danger",
+        "DUPLICATE" => "bg-warning text-dark",
+        _ => "bg-secondary",
+    };
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}

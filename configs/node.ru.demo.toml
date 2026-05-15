@@ -27,7 +27,7 @@ dns_txt_publish     = false
 [network]
 listen_addr         = "0.0.0.0:7788"
 grpc_port           = 7788
-http_port           = 8083
+http_port           = 8081
 metrics_port        = 9093
 
 [tls]
@@ -36,3 +36,18 @@ insecure = true
 [peers.RS]
 addr       = "localhost:7787"
 node_scope = "regional"
+
+[apps.demo]
+auto_accept = "auto_mutual"
+
+[apps.demo.users.user-ru-01]
+display_hint = "Дмитрий Волков"
+region       = "RU"
+
+[apps.demo.users.user-ru-02]
+display_hint = "Анна Смирнова"
+region       = "RU"
+
+[apps.demo.users.user-ru-03]
+display_hint = "Сергей Козлов"
+region       = "RU"

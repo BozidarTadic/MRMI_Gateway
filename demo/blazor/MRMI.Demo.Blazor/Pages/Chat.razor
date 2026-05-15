@@ -1,6 +1,7 @@
 @page "/"
 @using MRMI.Gateway.Client
 @inject DemoState State
+@inject NavigationManager Nav
 @implements IDisposable
 
 <PageTitle>MRMI Gateway Demo</PageTitle>
@@ -92,10 +93,13 @@
                     </div>
 
                     <div class="panel-footer">
-                        <button class="btn btn-sm btn-outline-primary w-100"
-                                @onclick="RsShowNew" disabled="@_loading">
+                        <a class="btn btn-sm btn-outline-primary w-100 @(_loading ? "disabled" : "")"
+                           href="@ChatUrl(rsNew: true)"
+                           role="button"
+                           aria-disabled="@_loading"
+                           @onclick="RsShowNew">
                             + New chat
-                        </button>
+                        </a>
                     </div>
                 }
 
@@ -104,22 +108,36 @@
                     <div class="chat-view-header">
                         <button class="btn-back" @onclick="RsBack">&#8592;</button>
                         <span class="fw-semibold">New chat</span>
-                        <span class="ms-auto small text-muted">Select a contact</span>
+                        <span class="ms-auto small text-muted">@NewChatHint(State.RuUsers.Count)</span>
                     </div>
                     <div class="chat-list">
-                        @foreach (var u in State.RuUsers)
+                        @if (State.RuUsers.Count == 0)
                         {
-                            var alreadyExists = State.ChatList.Any(c => c.RsId == _rsUserId && c.RuId == u.UserId);
-                            <div class="chat-list-item" @onclick="() => RsStartChat(u.UserId)">
-                                <span class="chat-avatar chat-avatar-ru">@u.DisplayHint[0]</span>
-                                <div class="chat-list-info">
-                                    <div class="chat-list-name">@u.DisplayHint</div>
-                                    <div class="chat-list-preview text-muted">
-                                        @u.UserId
-                                        @if (alreadyExists) { <span class="badge bg-secondary ms-1" style="font-size:0.6rem">existing</span> }
+                            <div class="chat-list-empty">
+                                <div class="chat-empty-icon">&#128269;</div>
+                                <div class="chat-empty-title">No RU contacts loaded</div>
+                                <div class="chat-empty-hint">Check that the RU gateway is running, then reload contacts.</div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @onclick="ReloadUsers" disabled="@_loading">
+                                    @(_loading ? "Loading..." : "Reload contacts")
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var u in State.RuUsers)
+                            {
+                                var alreadyExists = State.ChatList.Any(c => c.RsId == _rsUserId && c.RuId == u.UserId);
+                                <div class="chat-list-item" @onclick="() => RsStartChat(u.UserId)">
+                                    <span class="chat-avatar chat-avatar-ru">@SafeInitial(u.DisplayHint)</span>
+                                    <div class="chat-list-info">
+                                        <div class="chat-list-name">@u.DisplayHint</div>
+                                        <div class="chat-list-preview text-muted">
+                                            @u.UserId
+                                            @if (alreadyExists) { <span class="badge bg-secondary ms-1" style="font-size:0.6rem">existing</span> }
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            }
                         }
                     </div>
                 }
@@ -245,10 +263,13 @@
                     </div>
 
                     <div class="panel-footer">
-                        <button class="btn btn-sm btn-outline-danger w-100"
-                                @onclick="RuShowNew" disabled="@_loading">
+                        <a class="btn btn-sm btn-outline-danger w-100 @(_loading ? "disabled" : "")"
+                           href="@ChatUrl(ruNew: true)"
+                           role="button"
+                           aria-disabled="@_loading"
+                           @onclick="RuShowNew">
                             + New chat
-                        </button>
+                        </a>
                     </div>
                 }
 
@@ -257,22 +278,36 @@
                     <div class="chat-view-header">
                         <button class="btn-back" @onclick="RuBack">&#8592;</button>
                         <span class="fw-semibold">New chat</span>
-                        <span class="ms-auto small text-muted">Select a contact</span>
+                        <span class="ms-auto small text-muted">@NewChatHint(State.RsUsers.Count)</span>
                     </div>
                     <div class="chat-list">
-                        @foreach (var u in State.RsUsers)
+                        @if (State.RsUsers.Count == 0)
                         {
-                            var alreadyExists = State.ChatList.Any(c => c.RsId == u.UserId && c.RuId == _ruUserId);
-                            <div class="chat-list-item" @onclick="() => RuStartChat(u.UserId)">
-                                <span class="chat-avatar chat-avatar-rs">@u.DisplayHint[0]</span>
-                                <div class="chat-list-info">
-                                    <div class="chat-list-name">@u.DisplayHint</div>
-                                    <div class="chat-list-preview text-muted">
-                                        @u.UserId
-                                        @if (alreadyExists) { <span class="badge bg-secondary ms-1" style="font-size:0.6rem">existing</span> }
+                            <div class="chat-list-empty">
+                                <div class="chat-empty-icon">&#128269;</div>
+                                <div class="chat-empty-title">No RS contacts loaded</div>
+                                <div class="chat-empty-hint">Check that the RS gateway is running, then reload contacts.</div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @onclick="ReloadUsers" disabled="@_loading">
+                                    @(_loading ? "Loading..." : "Reload contacts")
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var u in State.RsUsers)
+                            {
+                                var alreadyExists = State.ChatList.Any(c => c.RsId == u.UserId && c.RuId == _ruUserId);
+                                <div class="chat-list-item" @onclick="() => RuStartChat(u.UserId)">
+                                    <span class="chat-avatar chat-avatar-rs">@SafeInitial(u.DisplayHint)</span>
+                                    <div class="chat-list-info">
+                                        <div class="chat-list-name">@u.DisplayHint</div>
+                                        <div class="chat-list-preview text-muted">
+                                            @u.UserId
+                                            @if (alreadyExists) { <span class="badge bg-secondary ms-1" style="font-size:0.6rem">existing</span> }
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            }
                         }
                     </div>
                 }
@@ -398,23 +433,44 @@
     private bool      _ruSending;
     private string?   _ruStatus;
 
-    private bool _loading = true;
+    private bool _loading = false;
+
+    [SupplyParameterFromQuery(Name = "rs")]
+    public string? RsMode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "ru")]
+    public string? RuMode { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
         State.OnChanged += OnStateChanged;
         State.StartStreaming();
-        await State.LoadUsersAsync();
+
+        // Use existing singleton data if already populated (pre-render pass or another circuit).
         if (State.RsUsers.Count > 0) _rsUserId = State.RsUsers[0].UserId;
         if (State.RuUsers.Count > 0) _ruUserId = State.RuUsers[0].UserId;
-        _loading = false;
+
+        if (State.RsUsers.Count == 0 || State.RuUsers.Count == 0)
+        {
+            _loading = true;
+            await State.LoadUsersAsync();
+            if (State.RsUsers.Count > 0) _rsUserId = State.RsUsers[0].UserId;
+            if (State.RuUsers.Count > 0) _ruUserId = State.RuUsers[0].UserId;
+            _loading = false;
+        }
+        ApplyQueryModes();
     }
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
 
+    protected override void OnParametersSet()
+    {
+        ApplyQueryModes();
+    }
+
     // ── RS panel navigation ───────────────────────────────────────
     private void OnRsUserChange(string? id) { _rsUserId = id ?? ""; _rsView = PanelView.List; _rsChatKey = null; _rsStatus = null; }
-    private void RsShowNew()  => _rsView = PanelView.New;
+    private void RsShowNew()  { _rsView = PanelView.New; _rsChatKey = null; _rsStatus = null; }
     private void RsBack()     { _rsView = PanelView.List; _rsChatKey = null; _rsStatus = null; }
     private void RsOpenChat((string RsId, string RuId) key) { _rsChatKey = key; _rsView = PanelView.Chat; _rsStatus = null; }
     private void RsStartChat(string ruId)
@@ -426,7 +482,7 @@
 
     // ── RU panel navigation ───────────────────────────────────────
     private void OnRuUserChange(string? id) { _ruUserId = id ?? ""; _ruView = PanelView.List; _ruChatKey = null; _ruStatus = null; }
-    private void RuShowNew()  => _ruView = PanelView.New;
+    private void RuShowNew()  { _ruView = PanelView.New; _ruChatKey = null; _ruStatus = null; }
     private void RuBack()     { _ruView = PanelView.List; _ruChatKey = null; _ruStatus = null; }
     private void RuOpenChat((string RsId, string RuId) key) { _ruChatKey = key; _ruView = PanelView.Chat; _ruStatus = null; }
     private void RuStartChat(string rsId)
@@ -461,6 +517,45 @@
         _ruStatus = $"{decision} — {reason}";
         _ruSending = false;
     }
+
+    private async Task ReloadUsers()
+    {
+        _loading = true;
+        await State.LoadUsersAsync();
+        if (string.IsNullOrEmpty(_rsUserId) && State.RsUsers.Count > 0) _rsUserId = State.RsUsers[0].UserId;
+        if (string.IsNullOrEmpty(_ruUserId) && State.RuUsers.Count > 0) _ruUserId = State.RuUsers[0].UserId;
+        _loading = false;
+    }
+
+    private void ApplyQueryModes()
+    {
+        if (string.Equals(RsMode, "new", StringComparison.OrdinalIgnoreCase))
+        {
+            _rsView = PanelView.New;
+            _rsChatKey = null;
+            _rsStatus = null;
+        }
+
+        if (string.Equals(RuMode, "new", StringComparison.OrdinalIgnoreCase))
+        {
+            _ruView = PanelView.New;
+            _ruChatKey = null;
+            _ruStatus = null;
+        }
+    }
+
+    private string ChatUrl(bool rsNew = false, bool ruNew = false)
+    {
+        var query = new Dictionary<string, object?>();
+        if (rsNew) query["rs"] = "new";
+        if (ruNew) query["ru"] = "new";
+        return Nav.GetUriWithQueryParameters("/", query);
+    }
+
+    private static string NewChatHint(int count) => count == 0 ? "No contacts" : "Select a contact";
+
+    private static char SafeInitial(string value)
+        => string.IsNullOrWhiteSpace(value) ? '?' : value.Trim()[0];
 
     public void Dispose() => State.OnChanged -= OnStateChanged;
 }

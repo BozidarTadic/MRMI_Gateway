@@ -167,6 +167,14 @@ go test ./...
 
 **Local two-node corridor (RS + RU):** see [docs/LOCAL_TWO_NODE_GUIDE.md](docs/LOCAL_TWO_NODE_GUIDE.md).
 
+**Start the full local demo on Windows:**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\demo-start.ps1
+```
+
+This starts the RS gateway on `:8080`, the RU gateway on `:8081`, and the Blazor demo UI on `http://localhost:5294`.
+
 ## Configuration
 
 Nodes are configured via signed TOML files. Three compliance profiles are available (`strict`, `balanced`, `performance`); the shipped configs use `balanced`:
