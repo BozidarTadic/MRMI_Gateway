@@ -1,5 +1,5 @@
-<p align="center">
-  <img src=".github/assets/mrmi-gateway-logo.png" alt="MRMI Gateway logo" width="240">
+<p style="text-align: center;">
+  <img src=".github/assets/mrmi-gateway-logo.png" alt="MRMI Gateway logo" style="width: 240px; max-width: 100%; height: auto;">
 </p>
 
 # MRMI Gateway
