@@ -53,92 +53,11 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.4 (Sprint 9 complete)
+## Current Status — v0.4
 
-**Sprint 1 + 2 — complete**
+MRMI Gateway includes the core node runtime, policy engine, Merkle audit log, mTLS gRPC transport, REST management API, SDKs, embedded dashboard, persistence backends, federated discovery, transit cache, rate limiting, and local RS/RU demo corridor.
 
-- [x] Protobuf contracts (`proto/mrmi/v1/contracts.proto`)
-- [x] Config model — TOML parser, 3 profiles, node tier (Regional/Alliance/Global), `Config.Validate()`
-- [x] Policy engine — allow/deny by region + trust tier, all decisions audited
-- [x] Merkle audit log — SHA-256 chained, `Verify()`, `RootHash()`
-- [x] HTTP server — `/healthz`, `/readyz`, `/.well-known/mrmi-audit`
-- [x] gRPC transport — server + client, `GatewayService` handler
-- [x] App wiring + graceful shutdown
-- [x] Dedup index — idempotency key store with TTL, duplicate decisions logged to audit
-- [x] Local two-node RS/RU corridor — integration test + local configs
-- [x] mTLS on all inter-node gRPC (`tlsutil` package, TLS 1.3 minimum)
-- [x] Timing jitter + payload padding (applied on balanced/strict profiles before forwarding)
-- [x] DNS TXT root hash publisher (stdout/file on configured interval)
-- [x] Envelope forwarding between nodes (tier-preference routing: Regional → Alliance → Global → DLQ)
-- [x] Retry with exponential backoff and dead-letter queue (`delivery` package)
-- [x] Node tier model — `node_scope`, `alliance_id`, `node_region` in config and audit entries
-
-**Sprint 3 — complete**
-
-- [x] `applicable_law` in DNS TXT output + startup warning on unset production profile
-- [x] Trust tier violation reason and tier value in audit entries
-- [x] Per-sender sequence number tracker (`session` package)
-- [x] Ed25519 envelope signing — sign on send, verify before policy evaluation (`identity` package)
-- [x] CRL store and revocation gossip — ≥2 T2+ signatures required (`crl` package)
-- [x] Trust decay timer — auto-reduce effective tier after 30 days without cross-validation
-- [x] Dummy traffic generator — synthetic envelopes at profile-defined intervals (`dummy` package)
-
-**Sprint 4 — complete**
-
-- [x] HTTPS `/.well-known/mrmi-audit` with Ed25519 signature (`https_well_known = true`)
-- [x] Cross-node root hash gossip — peers cross-verify audit chains (`root_hash_gossip = true`)
-- [x] Policy hot-reload — config changes applied within 5 seconds without restart (`hotreload` package)
-- [x] `mrmi` CLI — `keygen`, `audit verify --local/--dns/--https`
-
-**Sprint 5 — complete**
-
-- [x] Management REST API (`/api/v1/status`, `/api/v1/envelopes`, `/api/v1/audit/latest`, `/api/v1/dlq`, `/api/v1/crl`, `/api/v1/stream`)
-- [x] .NET SDK `MrmiClient` — `Send`, `Receive`, DLQ/CRL management (`sdk/dotnet/MRMI.Gateway.Client/`)
-- [x] Acceptance test suite (`test/acceptance/`) — 12 tests covering all REST endpoints + SSE stream
-- [x] Seed Node Deployment Guide (`docs/SEED_NODE_GUIDE.md`)
-
-**Sprint 6 — complete**
-
-- [x] Push notification webhook — `internal/webhook/`, HMAC-SHA256, best-effort delivery
-- [x] Management API write endpoints — peer register, discard/replay DLQ, config reload, revoke; API key auth
-- [x] User discovery + connect protocol — `internal/registry/`, opaque tokens, auto-accept modes
-- [x] .NET SDK v0.2 — `DiscoverAsync`, `ConnectAsync`, `AutoAcceptMode`
-- [x] Python SDK v0.2 — `sdk/python/` (`mrmi-gateway-sdk`)
-- [x] Blazor demo app — split-screen RS/RU corridor with live audit log (`demo/blazor/`)
-
-**Sprint 7 — complete** (v0.2, federated discovery)
-
-- [x] Federated discovery proto — `BroadcastDiscovery` + `ConnectRequest` RPCs in `contracts.proto`
-- [x] Broadcast engine — hop-limited fan-out with dedup, 30 s staleness guard (`internal/discovery/`)
-- [x] Opaque token lifecycle — SHA-256 single-use tokens, TTL-based purge (`internal/token/`)
-- [x] App namespace isolation — `SAME_APP_ONLY` / `WHITELIST` / `OPEN` policy modes
-- [x] ConnectRequest auto-accept — `MANUAL` / `AUTO_WHITELIST` / `AUTO_MUTUAL` / `AUTO_ALL`
-
-**Sprint 8 — complete** (v0.3, persistence + dashboard)
-
-- [x] `NodeStore` interface — pluggable persistence for dedup, DLQ, CRL, audit (`internal/store/`)
-- [x] bbolt backend — embedded persistent key-value store (`internal/store/bbolt/`)
-- [x] Redis backend — `go-redis/v9`, `SetNX` dedup, HSET for DLQ/CRL, RPUSH for audit (`internal/store/redis/`)
-- [x] Dynamic peer discovery — `peerdiscovery.Registry`, gossip loop, bootstrap nodes, stale eviction
-- [x] Management API v0.3 — JWT HMAC-SHA256 auth, `GET/PUT /api/v1/config`, app register/deregister endpoints
-- [x] Embedded dashboard SPA — vanilla JS, dark theme, 5 pages: Status, Audit Log, DLQ, Settings, Apps (`web/`)
-- [x] Sprint 8 integration tests — 14 new acceptance tests covering apps, dashboard, JWT, gossip, config PUT
-
-**Sprint 9 — complete** (v0.4, production hardening)
-
-- [x] Transit cache — in-memory LRU+TTL buffer (≤60 s, ≤1000 entries) before DLQ promotion (`internal/transit/`)
-- [x] Discovery rate limiter — per-origin-node token bucket (10 req/s, burst 20) on `BroadcastDiscovery` RPC (`internal/ratelimit/`)
-- [x] Alliance and global node operator guide — `docs/ALLIANCE_NODE_GUIDE.md`; example configs `configs/node.alliance.eaeu.toml`, `configs/node.global.relay.toml`
-- [x] `POST /api/v1/token` — API-key-authenticated JWT issuance endpoint; scope `read`/`operator`, configurable TTL
-- [x] Python SDK v0.3 — `jwt_token` option, `issue_token()`, `list_apps()`, `register_app()`, `delete_app()` (`sdk/python/`)
-- [x] .NET SDK v0.3 — `JwtToken`/`ApiKey` options, `IssueTokenAsync()`, `ListAppsAsync()`, `RegisterAppAsync()`, `DeleteAppAsync()` (`sdk/dotnet/`)
-- [x] Sprint 9 acceptance tests — 11 new tests: transit cache drain, rate limiter, JWT issuance flow, JWT→apps auth
-
-**Future**
-
-- [ ] DHT-based peer discovery (v1.0)
-- [ ] CLI reference client (open for contributors)
-- [ ] Java SDK (open for contributors)
+Roadmap planning and contributor work are tracked in GitHub Projects instead of this README.
 
 ## Quick Start
 
@@ -223,12 +142,12 @@ sdk/dotnet/         — .NET 10 SDK (MRMI.Gateway.Client NuGet package)
 sdk/python/         — Python SDK (mrmi-gateway-sdk, PyPI)
 demo/blazor/        — Blazor Server demo: split-screen RS/RU corridor
 test/acceptance/    — end-to-end REST API acceptance tests
-docs/               — ADR, sprint plans, operator guides
+docs/               — ADR and operator guides
 ```
 
 ## Contributing
 
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md). Items open for external contributors: CLI reference client (Milestone 8), Extension API (Milestone 9), Java SDK (Milestone 10).
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md). Open contributor work is tracked in GitHub Projects.
 
 ## License
 
