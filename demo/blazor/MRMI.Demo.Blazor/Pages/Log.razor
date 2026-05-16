@@ -26,6 +26,7 @@
                     <th style="width:90px">Time</th>
                     <th style="width:88px">Direction</th>
                     <th style="width:70px">Decision</th>
+                    <th style="width:52px">Tier</th>
                     <th style="width:120px">Reason</th>
                     <th>Message</th>
                     <th style="width:75px">Profile</th>
@@ -42,6 +43,7 @@
                         <td>@e.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
                         <td>@e.Direction</td>
                         <td><span class="badge @BadgeClass(e.Decision)">@e.Decision</span></td>
+                        <td class="text-muted">@TextOrDash(e.TrustTier)</td>
                         <td class="text-muted">@e.Reason</td>
                         <td>@(e.Payload is not null ? (e.Payload.Length > 50 ? e.Payload[..50] + "…" : e.Payload) : "")</td>
                         <td class="text-muted">@e.Profile</td>
@@ -58,7 +60,7 @@
                 @if (!Filtered.Any())
                 {
                     <tr>
-                        <td colspan="10" class="text-muted text-center py-3">
+                        <td colspan="11" class="text-muted text-center py-3">
                             No entries yet — send a message from the Chat page.
                         </td>
                     </tr>
@@ -89,6 +91,8 @@
         "ERROR" => "bg-warning text-dark",
         _       => "bg-secondary",
     };
+
+    private static string TextOrDash(uint? value) => value?.ToString() ?? "-";
 
     protected override void OnInitialized() => State.OnChanged += OnStateChanged;
     private void OnStateChanged() => InvokeAsync(StateHasChanged);

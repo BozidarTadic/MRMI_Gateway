@@ -472,25 +472,95 @@ a, .btn-link { color: #0071c1; }
     margin-bottom: 0.75rem;
 }
 
-.scenario-buttons {
+.scenario-presets {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
 }
 
-.scenario-result {
+.scenario-form {
     margin-top: 0.75rem;
     display: grid;
-    grid-template-columns: 90px 170px minmax(0, 1fr) minmax(150px, 260px);
+    grid-template-columns: 130px repeat(3, minmax(90px, 1fr)) minmax(220px, 2fr);
+    gap: 0.6rem;
+    align-items: end;
+}
+
+.scenario-form label {
+    min-width: 0;
+}
+
+.scenario-form label span {
+    display: block;
+    color: #6c757d;
+    font-size: 0.68rem;
+    font-weight: 700;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+}
+
+.scenario-payload {
+    min-width: 0;
+}
+
+.scenario-runbar {
+    margin-top: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.scenario-result-card {
+    margin-top: 0.75rem;
+    border: 1px solid #edf0f2;
+    border-radius: 0.45rem;
+    padding: 0.75rem;
+    background: #f8f9fa;
+}
+
+.scenario-result-head {
+    display: grid;
+    grid-template-columns: 90px minmax(150px, 1fr) minmax(110px, auto);
     gap: 0.55rem;
     align-items: center;
     font-size: 0.82rem;
 }
 
-.scenario-result code {
+.scenario-detail-grid {
+    margin-top: 0.65rem;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.scenario-detail-grid div {
+    min-width: 0;
+    border: 1px solid #e9ecef;
+    border-radius: 0.35rem;
+    background: #fff;
+    padding: 0.45rem 0.55rem;
+}
+
+.scenario-detail-grid span {
+    display: block;
+    color: #6c757d;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.scenario-detail-grid strong,
+.scenario-detail-grid code {
+    display: block;
+    font-size: 0.78rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.scenario-detail-wide {
+    grid-column: span 2;
 }
 
 @media (max-width: 900px) {
@@ -498,7 +568,13 @@ a, .btn-link { color: #0071c1; }
         grid-template-columns: 1fr;
     }
 
-    .scenario-result {
+    .scenario-form,
+    .scenario-result-head,
+    .scenario-detail-grid {
         grid-template-columns: 1fr;
+    }
+
+    .scenario-detail-wide {
+        grid-column: auto;
     }
 }

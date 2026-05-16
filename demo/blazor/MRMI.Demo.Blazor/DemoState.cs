@@ -159,35 +159,48 @@ public sealed class DemoState : IAsyncDisposable
         var toRegion = fromRegion == RsRegion ? RuRegion : RsRegion;
         var key = $"demo-{_sessionPrefix}:{rsId}:{ruId}:{Interlocked.Increment(ref _seqCounter):D6}";
         var client = fromRegion == RsRegion ? RsClient : RuClient;
-        return await SendEnvelopeAsync(client, key, fromRegion, toRegion, 1, text);
+        var result = await SendEnvelopeAsync(client, key, fromRegion, toRegion, 1, text);
+        return (result.Decision, result.Reason);
     }
 
     public async Task<ScenarioResult> RunScenarioAsync(DemoScenario scenario)
     {
-        return scenario switch
+        var request = scenario switch
         {
-            DemoScenario.AllowedRsToRu => await RunSingleScenarioAsync(
-                "Allowed RS -> RU",
-                RsClient,
-                $"scenario-{_sessionPrefix}:allow:{Interlocked.Increment(ref _seqCounter):D6}",
-                RsRegion,
-                RuRegion,
-                1,
-                "Allowed demo payload"),
-
-            DemoScenario.DeniedBlockedJurisdiction => await RunSingleScenarioAsync(
-                "Denied RS -> US",
-                RsClient,
-                $"scenario-{_sessionPrefix}:deny-us:{Interlocked.Increment(ref _seqCounter):D6}",
-                RsRegion,
-                "US",
-                1,
-                "This should not leave the allowed corridor"),
-
-            DemoScenario.DuplicateIdempotency => await RunDuplicateScenarioAsync(),
-
+            DemoScenario.AllowedRsToRu => ScenarioRunRequest.AllowedCorridor(),
+            DemoScenario.DeniedBlockedJurisdiction => ScenarioRunRequest.BlockedJurisdiction(),
+            DemoScenario.LowTrustTier => ScenarioRunRequest.LowTrustTier(),
+            DemoScenario.UnknownRegion => ScenarioRunRequest.UnknownRegion(),
+            DemoScenario.DuplicateIdempotency => ScenarioRunRequest.AllowedCorridor() with
+            {
+                Name = "Duplicate idempotency key",
+                Payload = "First and second sends reuse the same idempotency key",
+            },
             _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null),
         };
+
+        return scenario == DemoScenario.DuplicateIdempotency
+            ? await RunDuplicateScenarioAsync(request)
+            : await RunScenarioAsync(request);
+    }
+
+    public async Task<ScenarioResult> RunScenarioAsync(ScenarioRunRequest request)
+    {
+        if (string.Equals(request.Slug, "duplicate", StringComparison.OrdinalIgnoreCase))
+            return await RunDuplicateScenarioAsync(request);
+
+        var nodeLabel = string.Equals(request.Node, "RU", StringComparison.OrdinalIgnoreCase) ? "RU" : "RS";
+        var client = nodeLabel == "RU" ? RuClient : RsClient;
+        var key = $"scenario-{_sessionPrefix}:{request.Slug}:{Interlocked.Increment(ref _seqCounter):D6}";
+        return await RunSingleScenarioAsync(
+            request.Name,
+            client,
+            nodeLabel,
+            key,
+            request.SenderRegion,
+            request.RecipientRegion,
+            request.TrustTier,
+            request.Payload);
     }
 
     public async Task<IReadOnlyList<NodeSnapshot>> LoadNodeSnapshotsAsync()
@@ -225,25 +238,54 @@ public sealed class DemoState : IAsyncDisposable
     private async Task<ScenarioResult> RunSingleScenarioAsync(
         string name,
         MrmiClient client,
+        string nodeLabel,
         string key,
         string fromRegion,
         string toRegion,
         uint trustTier,
         string text)
     {
-        var (decision, reason) = await SendEnvelopeAsync(client, key, fromRegion, toRegion, trustTier, text);
-        return new ScenarioResult(name, decision, reason, key);
+        var result = await SendEnvelopeAsync(client, key, fromRegion, toRegion, trustTier, text);
+        return new ScenarioResult(
+            name,
+            result.Decision,
+            result.Reason,
+            key,
+            nodeLabel,
+            fromRegion,
+            toRegion,
+            trustTier,
+            text,
+            result.AuditRootHash,
+            result.PeerAuditRootHash,
+            result.Profile,
+            result.NodeId);
     }
 
-    private async Task<ScenarioResult> RunDuplicateScenarioAsync()
+    private async Task<ScenarioResult> RunDuplicateScenarioAsync(ScenarioRunRequest request)
     {
         var key = $"scenario-{_sessionPrefix}:duplicate:{Interlocked.Increment(ref _seqCounter):D6}";
-        await SendEnvelopeAsync(RsClient, key, RsRegion, RuRegion, 1, "First send with reusable idempotency key");
-        var (decision, reason) = await SendEnvelopeAsync(RsClient, key, RsRegion, RuRegion, 1, "Second send with same idempotency key");
-        return new ScenarioResult("Duplicate idempotency key", decision, reason, key);
+        var nodeLabel = string.Equals(request.Node, "RU", StringComparison.OrdinalIgnoreCase) ? "RU" : "RS";
+        var client = nodeLabel == "RU" ? RuClient : RsClient;
+        await SendEnvelopeAsync(client, key, request.SenderRegion, request.RecipientRegion, request.TrustTier, request.Payload);
+        var result = await SendEnvelopeAsync(client, key, request.SenderRegion, request.RecipientRegion, request.TrustTier, request.Payload);
+        return new ScenarioResult(
+            request.Name,
+            result.Decision,
+            result.Reason,
+            key,
+            nodeLabel,
+            request.SenderRegion,
+            request.RecipientRegion,
+            request.TrustTier,
+            request.Payload,
+            result.AuditRootHash,
+            result.PeerAuditRootHash,
+            result.Profile,
+            result.NodeId);
     }
 
-    private async Task<(string Decision, string Reason)> SendEnvelopeAsync(
+    private async Task<ScenarioSendResult> SendEnvelopeAsync(
         MrmiClient client,
         string key,
         string fromRegion,
@@ -269,11 +311,18 @@ public sealed class DemoState : IAsyncDisposable
                     result.Decision, result.Reason, key, Payload: text,
                     AuditRootHash: result.AuditRootHash,
                     PeerAuditRootHash: result.PeerAuditRootHash,
-                    Profile: result.Profile, NodeId: result.NodeId));
+                    Profile: result.Profile, NodeId: result.NodeId,
+                    TrustTier: trustTier));
                 if (_log.Count > 200) _log.RemoveAt(_log.Count - 1);
             }
             OnChanged?.Invoke();
-            return (result.Decision, result.Reason);
+            return new ScenarioSendResult(
+                result.Decision,
+                result.Reason,
+                result.AuditRootHash,
+                result.PeerAuditRootHash,
+                result.Profile,
+                result.NodeId);
         }
         catch (Exception ex)
         {
@@ -284,7 +333,7 @@ public sealed class DemoState : IAsyncDisposable
                 if (_log.Count > 200) _log.RemoveAt(_log.Count - 1);
             }
             OnChanged?.Invoke();
-            return ("ERROR", ex.Message);
+            return new ScenarioSendResult("ERROR", ex.Message, null, null, null, null);
         }
     }
 
@@ -319,14 +368,80 @@ public enum DemoScenario
 {
     AllowedRsToRu,
     DeniedBlockedJurisdiction,
+    LowTrustTier,
+    UnknownRegion,
     DuplicateIdempotency,
+}
+
+public sealed record ScenarioRunRequest(
+    string Name,
+    string Slug,
+    string Node,
+    string SenderRegion,
+    string RecipientRegion,
+    uint TrustTier,
+    string Payload)
+{
+    public static ScenarioRunRequest AllowedCorridor() => new(
+        "Allowed corridor",
+        "allow",
+        "RS",
+        DemoState.RsRegion,
+        DemoState.RuRegion,
+        1,
+        "Allowed demo payload");
+
+    public static ScenarioRunRequest BlockedJurisdiction() => new(
+        "Blocked jurisdiction",
+        "blocked",
+        "RS",
+        DemoState.RsRegion,
+        "US",
+        1,
+        "This should not leave the allowed corridor");
+
+    public static ScenarioRunRequest LowTrustTier() => new(
+        "Low trust tier",
+        "low-trust",
+        "RS",
+        DemoState.RsRegion,
+        DemoState.RuRegion,
+        0,
+        "Low-trust request should be denied by policy");
+
+    public static ScenarioRunRequest UnknownRegion() => new(
+        "Unknown region",
+        "unknown-region",
+        "RS",
+        DemoState.RsRegion,
+        "ZZ",
+        1,
+        "Unknown recipient region should be denied by policy");
 }
 
 public sealed record ScenarioResult(
     string Name,
     string Decision,
     string Reason,
-    string IdempotencyKey
+    string IdempotencyKey,
+    string Node,
+    string SenderRegion,
+    string RecipientRegion,
+    uint TrustTier,
+    string Payload,
+    string? AuditRootHash,
+    string? PeerAuditRootHash,
+    string? Profile,
+    string? NodeId
+);
+
+public sealed record ScenarioSendResult(
+    string Decision,
+    string Reason,
+    string? AuditRootHash,
+    string? PeerAuditRootHash,
+    string? Profile,
+    string? NodeId
 );
 
 public sealed record NodeSnapshot(
@@ -359,7 +474,8 @@ public sealed record LogEntry(
     string? AuditRootHash = null,
     string? PeerAuditRootHash = null,
     string? Profile = null,
-    string? NodeId = null
+    string? NodeId = null,
+    uint? TrustTier = null
 )
 {
     public bool IsAllow => Decision == "ALLOW";

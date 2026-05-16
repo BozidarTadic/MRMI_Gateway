@@ -373,6 +373,7 @@
                     <th style="width:82px">Time</th>
                     <th style="width:82px">Direction</th>
                     <th style="width:68px">Decision</th>
+                    <th style="width:48px">Tier</th>
                     <th style="width:110px">Reason</th>
                     <th>Message</th>
                     <th style="width:70px">Profile</th>
@@ -392,6 +393,7 @@
                                 @e.Decision
                             </span>
                         </td>
+                        <td class="text-muted">@(e.TrustTier?.ToString() ?? "-")</td>
                         <td class="text-muted">@e.Reason</td>
                         <td>@(e.Payload is not null ? (e.Payload.Length > 40 ? e.Payload[..40] + "…" : e.Payload) : "")</td>
                         <td class="text-muted">@e.Profile</td>
@@ -406,7 +408,7 @@
                 }
                 @if (!State.Log.Any())
                 {
-                    <tr><td colspan="9" class="text-muted text-center py-2">No activity yet.</td></tr>
+                    <tr><td colspan="10" class="text-muted text-center py-2">No activity yet.</td></tr>
                 }
             </tbody>
         </table>
