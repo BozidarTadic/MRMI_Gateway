@@ -1,0 +1,14 @@
+.policy-history {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.5rem;
+}
+
+.policy-history-row {
+    display: grid;
+    grid-template-columns: 72px 80px minmax(120px, 1fr) minmax(0, 2fr);
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.76rem;
+}

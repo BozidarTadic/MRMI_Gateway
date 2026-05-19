@@ -215,6 +215,29 @@ public sealed class MrmiClient : IDisposable
         response.EnsureSuccessStatusCode();
     }
 
+    // ── Audit well-known ─────────────────────────────────────────────────────
+
+    public async Task<AuditWellKnown> GetAuditWellKnownAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.GetAsync(
+            $"{_baseUrl}/.well-known/mrmi-audit", cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AuditWellKnown>(_json, cancellationToken)
+               ?? throw new InvalidOperationException("Empty response.");
+    }
+
+    // ── Config reload ─────────────────────────────────────────────────────────
+
+    public async Task<(int StatusCode, string Body)> ConfigReloadAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsync(
+            $"{_baseUrl}/api/v1/config/reload", null, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ((int)response.StatusCode, string.IsNullOrWhiteSpace(body) ? "(no body)" : body);
+    }
+
     // ── Discovery / Connect (v0.2) ────────────────────────────────────────────
 
     /// <summary>

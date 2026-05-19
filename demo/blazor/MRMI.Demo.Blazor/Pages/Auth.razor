@@ -1,0 +1,194 @@
+@page "/auth"
+@inject DemoState State
+@implements IDisposable
+
+<PageTitle>Authentication</PageTitle>
+
+<div class="nodes-layout">
+
+    <div class="nodes-header">
+        <div>
+            <h5 class="mb-1">Authentication</h5>
+            <div class="text-muted small">
+                Test API key and JWT flows. The demo gateways use <code>api_key = "demo-key"</code> — try actions with and without it.
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Per-node auth panels ──────────────────────────────────── -->
+
+    <div class="auth-grid">
+        @foreach (var region in new[] { DemoState.RsRegion, DemoState.RuRegion })
+        {
+            var isRs = region == DemoState.RsRegion;
+            var apiKey = isRs ? _rsKey : _ruKey;
+            var showKey = isRs ? _rsShowKey : _ruShowKey;
+            var result = isRs ? _rsResult : _ruResult;
+            var running = isRs ? _rsRunning : _ruRunning;
+
+            <div class="auth-card">
+                <div class="auth-card-head">
+                    <strong>@region node</strong>
+                    @if (State.GetStoredApiKey(region) is not null)
+                    {
+                        <span class="badge bg-success ms-1" style="font-size:0.68rem">key saved</span>
+                    }
+                </div>
+
+                <!-- API key input -->
+                <div class="auth-key-row">
+                    <label class="text-muted small" style="flex-shrink:0">API key</label>
+                    <input class="form-control form-control-sm font-monospace"
+                           type="@(showKey ? "text" : "password")"
+                           placeholder="demo-key"
+                           value="@apiKey"
+                           @oninput="e => SetKey(region, e.Value?.ToString())" />
+                    <button class="btn btn-sm btn-outline-secondary"
+                            style="padding:0.1rem 0.45rem;font-size:0.72rem;white-space:nowrap"
+                            @onclick="() => ToggleShow(region)">
+                        @(showKey ? "Hide" : "Show")
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary"
+                            style="padding:0.1rem 0.45rem;font-size:0.72rem;white-space:nowrap"
+                            @onclick="() => SaveKey(region)">
+                        Save
+                    </button>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="auth-actions">
+                    <button class="btn btn-sm btn-outline-secondary"
+                            @onclick="() => TryReload(region, null)" disabled="@running">
+                        Reload (no auth)
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary"
+                            @onclick="() => TryReload(region, apiKey)" disabled="@running">
+                        Reload (with key)
+                    </button>
+                    <button class="btn btn-sm btn-outline-success"
+                            @onclick='() => TryIssueToken(region, apiKey, "read")' disabled="@running">
+                        Issue JWT read
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning text-dark"
+                            @onclick='() => TryIssueToken(region, apiKey, "operator")' disabled="@running">
+                        Issue JWT operator
+                    </button>
+                </div>
+
+                @if (running)
+                {
+                    <div class="text-muted small mt-2">Running…</div>
+                }
+                else if (result is not null)
+                {
+                    <div class="auth-result @(result.StatusCode == 200 ? "auth-result-ok" : result.StatusCode == 0 ? "auth-result-warn" : "auth-result-err")">
+                        <div class="auth-result-head">
+                            <span class="badge @StatusBadge(result.StatusCode)">@(result.StatusCode == 0 ? "ERR" : result.StatusCode.ToString())</span>
+                            <strong>@result.Action</strong>
+                            <span class="ms-auto text-muted" style="font-size:0.68rem">@result.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                        </div>
+                        <div class="auth-result-body">@result.Body</div>
+                    </div>
+                }
+
+                @if (_history.TryGetValue(region, out var hist) && hist.Count > 0)
+                {
+                    <div class="section-title" style="margin-top:0.75rem">History</div>
+                    <div class="auth-history">
+                        @foreach (var h in hist)
+                        {
+                            <div class="auth-history-row">
+                                <span class="text-muted">@h.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                                <span class="badge @StatusBadge(h.StatusCode)">@(h.StatusCode == 0 ? "ERR" : h.StatusCode.ToString())</span>
+                                <span class="text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@h.Action — @h.Body</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+</div>
+
+@code {
+    private string _rsKey    = "";
+    private string _ruKey    = "";
+    private bool   _rsShowKey;
+    private bool   _ruShowKey;
+    private bool   _rsRunning;
+    private bool   _ruRunning;
+    private AuthActionResult? _rsResult;
+    private AuthActionResult? _ruResult;
+    private readonly Dictionary<string, List<AuthActionResult>> _history = new()
+    {
+        [DemoState.RsRegion] = [],
+        [DemoState.RuRegion] = [],
+    };
+
+    protected override void OnInitialized()
+    {
+        State.OnChanged += OnStateChanged;
+        _rsKey = State.GetStoredApiKey(DemoState.RsRegion) ?? "";
+        _ruKey = State.GetStoredApiKey(DemoState.RuRegion) ?? "";
+    }
+
+    private void SetKey(string region, string? value)
+    {
+        if (region == DemoState.RsRegion) _rsKey = value ?? "";
+        else _ruKey = value ?? "";
+    }
+
+    private void ToggleShow(string region)
+    {
+        if (region == DemoState.RsRegion) _rsShowKey = !_rsShowKey;
+        else _ruShowKey = !_ruShowKey;
+    }
+
+    private void SaveKey(string region)
+    {
+        var key = region == DemoState.RsRegion ? _rsKey : _ruKey;
+        State.SetNodeCredentials(region, string.IsNullOrWhiteSpace(key) ? null : key.Trim());
+    }
+
+    private async Task TryReload(string region, string? apiKey)
+    {
+        SetRunning(region, true);
+        var result = await State.TryConfigReloadAsync(region, apiKey);
+        SetResult(region, result);
+        SetRunning(region, false);
+    }
+
+    private async Task TryIssueToken(string region, string apiKey, string scope)
+    {
+        SetRunning(region, true);
+        var result = await State.TryIssueTokenAsync(region, apiKey, scope);
+        SetResult(region, result);
+        SetRunning(region, false);
+    }
+
+    private void SetRunning(string region, bool v)
+    {
+        if (region == DemoState.RsRegion) _rsRunning = v; else _ruRunning = v;
+    }
+
+    private void SetResult(string region, AuthActionResult r)
+    {
+        if (region == DemoState.RsRegion) _rsResult = r; else _ruResult = r;
+        var hist = _history[region];
+        hist.Insert(0, r);
+        if (hist.Count > 10) hist.RemoveAt(hist.Count - 1);
+    }
+
+    private static string StatusBadge(int code) => code switch
+    {
+        200           => "bg-success",
+        401 or 403    => "bg-danger",
+        0             => "bg-secondary",
+        >= 400        => "bg-warning text-dark",
+        _             => "bg-secondary",
+    };
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}

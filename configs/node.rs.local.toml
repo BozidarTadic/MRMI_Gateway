@@ -35,8 +35,16 @@ metrics_port        = 9090
 [tls]
 insecure = true
 
+[api]
+api_key = "demo-key"
+
 [peers.RU]
 addr       = "localhost:7778"
+node_scope = "regional"
+
+# Unreachable peer — used by the DLQ demo scenario
+[peers.BY]
+addr       = "localhost:9999"
 node_scope = "regional"
 
 [apps.mrmi-demo]

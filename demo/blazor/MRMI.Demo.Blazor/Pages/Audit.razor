@@ -1,0 +1,176 @@
+@page "/audit"
+@using MRMI.Gateway.Client
+@inject DemoState State
+@implements IDisposable
+
+<PageTitle>Audit</PageTitle>
+
+<div class="nodes-layout">
+
+    <div class="nodes-header">
+        <div>
+            <h5 class="mb-1">Audit Verification</h5>
+            <div class="text-muted small">
+                Fetch each node's published audit root and compare with the most recent envelope send result.
+            </div>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="VerifyAll" disabled="@(_rsVerifying || _ruVerifying)">
+            Verify all
+        </button>
+    </div>
+
+    <!-- ── Per-node verification cards ───────────────────────────── -->
+
+    <div class="audit-grid">
+        @foreach (var (region, result, verifying) in VerificationStates())
+        {
+            <div class="audit-card @(result is null ? "" : result.Error is not null ? "audit-card-error" : result.RootHashMatches == true ? "audit-card-match" : result.RootHashMatches == false ? "audit-card-mismatch" : "")">
+                <div class="audit-card-head">
+                    <strong>@region node</strong>
+                    @if (verifying)
+                    {
+                        <span class="badge bg-secondary ms-1">verifying…</span>
+                    }
+                    else if (result is not null)
+                    {
+                        @if (result.Error is not null)
+                        {
+                            <span class="badge bg-danger ms-1">UNREACHABLE</span>
+                        }
+                        else if (result.RootHashMatches == true)
+                        {
+                            <span class="badge bg-success ms-1">MATCH</span>
+                        }
+                        else if (result.RootHashMatches == false)
+                        {
+                            <span class="badge bg-warning text-dark ms-1">MISMATCH</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary ms-1">UNVERIFIED</span>
+                        }
+                    }
+                    <button class="btn btn-sm btn-outline-secondary ms-auto"
+                            style="padding:0.1rem 0.5rem;font-size:0.72rem"
+                            @onclick="() => VerifyNode(region)" disabled="@verifying">
+                        Verify
+                    </button>
+                </div>
+
+                @if (result?.Error is not null)
+                {
+                    <div class="audit-error">@result.Error</div>
+                }
+                else if (result?.WellKnown is not null)
+                {
+                    var wk = result.WellKnown;
+                    <div class="audit-facts">
+                        <div><span>root hash</span><code title="@wk.RootHash">@(wk.RootHash.Length > 20 ? wk.RootHash[..20] + "…" : wk.RootHash)</code></div>
+                        <div><span>signature</span><code title="@wk.Signature">@(string.IsNullOrEmpty(wk.Signature) ? "-" : wk.Signature[..Math.Min(16, wk.Signature.Length)] + "…")</code></div>
+                        <div><span>node id</span><strong>@wk.NodeId</strong></div>
+                        <div><span>applicable law</span><strong>@wk.ApplicableLaw</strong></div>
+                        <div><span>published</span><strong>@(wk.Timestamp > 0 ? DateTimeOffset.FromUnixTimeSeconds(wk.Timestamp).ToLocalTime().ToString("HH:mm:ss") : "-")</strong></div>
+                        <div><span>verified at</span><strong>@result.Timestamp.ToLocalTime().ToString("HH:mm:ss")</strong></div>
+                    </div>
+
+                    <div class="audit-compare">
+                        <div class="audit-compare-row">
+                            <span>Published root hash</span>
+                            <code title="@wk.RootHash">@ShortHash(wk.RootHash)</code>
+                        </div>
+                        <div class="audit-compare-row">
+                            <span>Last observed (send result)</span>
+                            <code title="@result.LastObservedRootHash">
+                                @(result.LastObservedRootHash is not null ? ShortHash(result.LastObservedRootHash) : "none — send a message first")
+                            </code>
+                        </div>
+                        @if (result.RootHashMatches == false)
+                        {
+                            <div class="audit-hint">
+                                Hashes differ — the audit log advanced since the last observed send
+                                (e.g. dummy traffic or another send on a different session).
+                                This is not a tampering indicator.
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="audit-placeholder">Click Verify to fetch this node's audit root.</div>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- ── Verification history ───────────────────────────────────── -->
+
+    @if (_history.Count > 0)
+    {
+        <div class="scenario-panel">
+            <div class="section-title">Verification history</div>
+            <div class="audit-history">
+                @foreach (var h in _history)
+                {
+                    <div class="audit-history-row">
+                        <span class="text-muted">@h.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                        <span>@h.Region</span>
+                        @if (h.Error is not null)
+                        {
+                            <span class="badge bg-danger">UNREACHABLE</span>
+                            <span class="text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@h.Error</span>
+                        }
+                        else
+                        {
+                            <span class="badge @(h.RootHashMatches == true ? "bg-success" : h.RootHashMatches == false ? "bg-warning text-dark" : "bg-secondary")">
+                                @(h.RootHashMatches == true ? "MATCH" : h.RootHashMatches == false ? "MISMATCH" : "UNVERIFIED")
+                            </span>
+                            <code style="font-size:0.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@ShortHash(h.WellKnown?.RootHash)</code>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+</div>
+
+@code {
+    private AuditVerificationResult? _rsResult;
+    private AuditVerificationResult? _ruResult;
+    private bool _rsVerifying;
+    private bool _ruVerifying;
+    private readonly List<AuditVerificationResult> _history = [];
+
+    protected override void OnInitialized()
+    {
+        State.OnChanged += OnStateChanged;
+    }
+
+    private IEnumerable<(string Region, AuditVerificationResult? Result, bool Verifying)> VerificationStates() =>
+    [
+        (DemoState.RsRegion, _rsResult, _rsVerifying),
+        (DemoState.RuRegion, _ruResult, _ruVerifying),
+    ];
+
+    private async Task VerifyNode(string region)
+    {
+        var isRs = string.Equals(region, DemoState.RsRegion, StringComparison.OrdinalIgnoreCase);
+        if (isRs) _rsVerifying = true; else _ruVerifying = true;
+        var result = await State.VerifyAuditAsync(region);
+        if (isRs) { _rsResult = result; _rsVerifying = false; }
+        else { _ruResult = result; _ruVerifying = false; }
+        _history.Insert(0, result);
+        if (_history.Count > 20) _history.RemoveAt(_history.Count - 1);
+    }
+
+    private async Task VerifyAll()
+    {
+        await Task.WhenAll(VerifyNode(DemoState.RsRegion), VerifyNode(DemoState.RuRegion));
+    }
+
+    private static string ShortHash(string? v) =>
+        string.IsNullOrWhiteSpace(v) ? "-" : v.Length > 16 ? v[..16] + "…" : v;
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}

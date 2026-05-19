@@ -1,0 +1,111 @@
+.audit-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+}
+
+.audit-card {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    background: #fff;
+    padding: 0.85rem;
+}
+
+.audit-card-match    { border-color: #a3cfbb; background: #f0faf4; }
+.audit-card-mismatch { border-color: #ffe69c; background: #fffdf0; }
+.audit-card-error    { border-color: #f1aeb5; background: #fff8f8; }
+
+.audit-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.65rem;
+}
+
+.audit-facts {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.4rem;
+    margin-bottom: 0.65rem;
+}
+
+.audit-facts > div {
+    border: 1px solid #edf0f2;
+    border-radius: 0.35rem;
+    padding: 0.4rem 0.55rem;
+}
+
+.audit-facts span {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #6c757d;
+    margin-bottom: 0.15rem;
+}
+
+.audit-facts strong,
+.audit-facts code {
+    display: block;
+    font-size: 0.76rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.audit-compare {
+    border-top: 1px solid #dee2e6;
+    padding-top: 0.55rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.audit-compare-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.76rem;
+}
+
+.audit-compare-row span { color: #6c757d; }
+.audit-compare-row code { font-size: 0.72rem; }
+
+.audit-hint {
+    font-size: 0.7rem;
+    color: #856404;
+    background: #fff3cd;
+    border-radius: 0.25rem;
+    padding: 0.3rem 0.5rem;
+    margin-top: 0.2rem;
+}
+
+.audit-error {
+    font-size: 0.76rem;
+    color: #dc3545;
+    margin: 0.35rem 0;
+    word-break: break-word;
+}
+
+.audit-placeholder {
+    font-size: 0.78rem;
+    color: #adb5bd;
+    font-style: italic;
+    padding: 0.5rem 0;
+}
+
+.audit-history {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.5rem;
+}
+
+.audit-history-row {
+    display: grid;
+    grid-template-columns: 72px 40px 100px minmax(0, 1fr);
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.76rem;
+}

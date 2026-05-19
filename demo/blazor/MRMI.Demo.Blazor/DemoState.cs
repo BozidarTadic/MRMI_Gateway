@@ -20,6 +20,25 @@ public sealed class DemoState : IAsyncDisposable
     public string? RsDiscoveryError { get; private set; }
     public string? RuDiscoveryError { get; private set; }
 
+    private string? _rsApiKey;
+    private string? _ruApiKey;
+
+    public void SetNodeCredentials(string region, string? apiKey)
+    {
+        if (string.Equals(region, RsRegion, StringComparison.OrdinalIgnoreCase)) _rsApiKey = apiKey;
+        else _ruApiKey = apiKey;
+    }
+
+    public string? GetStoredApiKey(string region)
+        => string.Equals(region, RsRegion, StringComparison.OrdinalIgnoreCase) ? _rsApiKey : _ruApiKey;
+
+    private MrmiClient MakePrivilegedClient(bool isRs)
+    {
+        var url = isRs ? RsBaseUrl : RuBaseUrl;
+        var key = isRs ? _rsApiKey : _ruApiKey;
+        return new MrmiClient(new MrmiClientOptions { BaseUrl = url, ApiKey = key });
+    }
+
     // key format: demo-{session}:{rsUserId}:{ruUserId}:{seq}
     // ':' used as separator because user IDs contain '-' but never ':'
     private readonly Dictionary<(string RsId, string RuId), List<ChatMessage>> _chats = new();
@@ -414,6 +433,116 @@ public sealed class DemoState : IAsyncDisposable
         }
     }
 
+    // ── DLQ management ───────────────────────────────────────────────────────
+
+    public async Task<(string Decision, string? Error)> ReplayDlqEntryAsync(
+        string region, int index)
+    {
+        var isRs = string.Equals(region, RsRegion, StringComparison.OrdinalIgnoreCase);
+        using var client = MakePrivilegedClient(isRs);
+        try
+        {
+            var result = await client.ReplayDlqEntryAsync(index);
+            return (result.Decision, null);
+        }
+        catch (Exception ex) { return ("ERROR", ex.Message); }
+    }
+
+    public async Task<string?> DiscardDlqEntryAsync(string region, int index)
+    {
+        var isRs = string.Equals(region, RsRegion, StringComparison.OrdinalIgnoreCase);
+        using var client = MakePrivilegedClient(isRs);
+        try
+        {
+            await client.RemoveDlqEntryAsync(index);
+            return null;
+        }
+        catch (Exception ex) { return ex.Message; }
+    }
+
+    public async Task<(string Decision, string Reason)> SendDirectAsync(
+        string fromRegion, string toRegion, string text)
+    {
+        var isRs = string.Equals(fromRegion, RsRegion, StringComparison.OrdinalIgnoreCase);
+        var key = $"direct-{_sessionPrefix}:{Interlocked.Increment(ref _seqCounter):D6}";
+        var result = await SendEnvelopeAsync(isRs ? RsClient : RuClient, key, fromRegion, toRegion, 1, text);
+        return (result.Decision, result.Reason);
+    }
+
+    // ── Audit verification ───────────────────────────────────────────────────
+
+    public async Task<AuditVerificationResult> VerifyAuditAsync(string region)
+    {
+        var isRs = string.Equals(region, RsRegion, StringComparison.OrdinalIgnoreCase);
+        var client = isRs ? RsClient : RuClient;
+        var nodeUrl = isRs ? RsBaseUrl : RuBaseUrl;
+
+        string? lastObservedHash;
+        lock (_lock)
+        {
+            lastObservedHash = _log
+                .Where(e => !string.IsNullOrEmpty(e.AuditRootHash)
+                         && (isRs
+                             ? e.Direction.StartsWith(RsRegion, StringComparison.OrdinalIgnoreCase)
+                             : e.Direction.StartsWith(RuRegion, StringComparison.OrdinalIgnoreCase)))
+                .Select(e => e.AuditRootHash)
+                .FirstOrDefault();
+        }
+
+        try
+        {
+            var wk = await client.GetAuditWellKnownAsync();
+            bool? matches = lastObservedHash is not null
+                ? string.Equals(wk.RootHash, lastObservedHash, StringComparison.Ordinal)
+                : null;
+            return new AuditVerificationResult(region, nodeUrl, wk, lastObservedHash, matches, null, DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            return new AuditVerificationResult(region, nodeUrl, null, lastObservedHash, null, ex.Message, DateTimeOffset.UtcNow);
+        }
+    }
+
+    // ── Auth sandbox ─────────────────────────────────────────────────────────
+
+    public async Task<AuthActionResult> TryConfigReloadAsync(string region, string? apiKey)
+    {
+        var isRs = string.Equals(region, RsRegion, StringComparison.OrdinalIgnoreCase);
+        var baseUrl = isRs ? RsBaseUrl : RuBaseUrl;
+        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        if (!string.IsNullOrWhiteSpace(apiKey))
+            http.DefaultRequestHeaders.Add("X-MRMI-Key", apiKey.Trim());
+        try
+        {
+            var resp = await http.PostAsync($"{baseUrl}/api/v1/config/reload", null);
+            var body = await resp.Content.ReadAsStringAsync();
+            var preview = string.IsNullOrWhiteSpace(body) ? "(no body)" : body.Length > 120 ? body[..120] + "…" : body;
+            return new AuthActionResult("Config reload", (int)resp.StatusCode, preview, DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            return new AuthActionResult("Config reload", 0, ex.Message, DateTimeOffset.UtcNow);
+        }
+    }
+
+    public async Task<AuthActionResult> TryIssueTokenAsync(string region, string apiKey, string scope)
+    {
+        var isRs = string.Equals(region, RsRegion, StringComparison.OrdinalIgnoreCase);
+        var baseUrl = isRs ? RsBaseUrl : RuBaseUrl;
+        using var client = new MrmiClient(new MrmiClientOptions { BaseUrl = baseUrl, ApiKey = apiKey.Trim() });
+        try
+        {
+            var token = await client.IssueTokenAsync(scope: scope, ttlMinutes: 60);
+            var expiresAt = DateTimeOffset.FromUnixTimeSeconds(token.ExpiresAt).ToLocalTime().ToString("HH:mm:ss");
+            var preview = $"Token: {token.Token[..Math.Min(24, token.Token.Length)]}…  scope={token.Scope}  expires={expiresAt}";
+            return new AuthActionResult($"Issue JWT ({scope})", 200, preview, DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            return new AuthActionResult($"Issue JWT ({scope})", 0, ex.Message, DateTimeOffset.UtcNow);
+        }
+    }
+
     public void ClearChat(string rsId, string ruId)
     {
         lock (_lock)
@@ -552,6 +681,23 @@ public sealed record NodeSnapshot(
     IReadOnlyList<AuditEntry> Audit,
     IReadOnlyList<DlqEntry> Dlq,
     string? Error
+);
+
+public sealed record AuditVerificationResult(
+    string Region,
+    string NodeUrl,
+    AuditWellKnown? WellKnown,
+    string? LastObservedRootHash,
+    bool? RootHashMatches,
+    string? Error,
+    DateTimeOffset Timestamp
+);
+
+public sealed record AuthActionResult(
+    string Action,
+    int StatusCode,
+    string Body,
+    DateTimeOffset Timestamp
 );
 
 public sealed record ConnectAttemptResult(

@@ -1,0 +1,203 @@
+@page "/policy"
+@inject DemoState State
+@implements IDisposable
+
+<PageTitle>Policy Playground</PageTitle>
+
+<div class="nodes-layout">
+
+    <div class="nodes-header">
+        <div>
+            <h5 class="mb-1">Policy Playground</h5>
+            <div class="text-muted small">Run envelope scenarios against live nodes and observe allow/deny decisions.</div>
+        </div>
+    </div>
+
+    <div class="scenario-panel">
+        <div class="section-title">Presets</div>
+        <div class="scenario-presets">
+            <button type="button" class="btn btn-sm btn-outline-success"
+                    @onclick="() => RunPreset(DemoScenario.AllowedRsToRu)" disabled="@_running">
+                Allowed corridor
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger"
+                    @onclick="() => RunPreset(DemoScenario.DeniedBlockedJurisdiction)" disabled="@_running">
+                Blocked jurisdiction
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger"
+                    @onclick="() => RunPreset(DemoScenario.LowTrustTier)" disabled="@_running">
+                Low trust tier (T0)
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    @onclick="() => RunPreset(DemoScenario.UnknownRegion)" disabled="@_running">
+                Unknown region
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-warning"
+                    @onclick="() => RunPreset(DemoScenario.DuplicateIdempotency)" disabled="@_running">
+                Duplicate key
+            </button>
+        </div>
+
+        <div class="section-title" style="margin-top:0.85rem">Custom scenario</div>
+        <div class="scenario-form">
+            <label>
+                <span>Node</span>
+                <select class="form-select form-select-sm" @bind="_node">
+                    <option value="RS">RS node</option>
+                    <option value="RU">RU node</option>
+                </select>
+            </label>
+            <label>
+                <span>Sender region</span>
+                <input class="form-control form-control-sm" maxlength="8"
+                       @bind="_senderRegion" @bind:event="oninput" />
+            </label>
+            <label>
+                <span>Recipient region</span>
+                <input class="form-control form-control-sm" maxlength="8"
+                       @bind="_recipientRegion" @bind:event="oninput" />
+            </label>
+            <label>
+                <span>Trust tier</span>
+                <input class="form-control form-control-sm" type="number" min="0" max="9"
+                       @bind="_trustTier" @bind:event="oninput" />
+            </label>
+            <label class="scenario-payload">
+                <span>Payload</span>
+                <input class="form-control form-control-sm"
+                       @bind="_payload" @bind:event="oninput" />
+            </label>
+        </div>
+
+        <div class="scenario-runbar">
+            <div class="text-muted small">@_name</div>
+            <button type="button" class="btn btn-sm btn-primary"
+                    @onclick="RunCustom" disabled="@_running">
+                @(_running ? "Running…" : "Run scenario")
+            </button>
+        </div>
+
+        @if (_result is not null)
+        {
+            <div class="scenario-result-card">
+                <div class="scenario-result-head">
+                    <span class="badge @BadgeClass(_result.Decision)">@_result.Decision</span>
+                    <strong>@_result.Name</strong>
+                    <span class="text-muted">@_result.SenderRegion → @_result.RecipientRegion</span>
+                </div>
+                <div class="scenario-detail-grid">
+                    <div><span>reason</span><strong>@_result.Reason</strong></div>
+                    <div><span>node</span><strong>@_result.Node</strong></div>
+                    <div><span>node id</span><strong>@TextOrDash(_result.NodeId)</strong></div>
+                    <div><span>profile</span><strong>@TextOrDash(_result.Profile)</strong></div>
+                    <div><span>trust tier</span><strong>@_result.TrustTier</strong></div>
+                    <div><span>local audit root</span><code title="@_result.AuditRootHash">@ShortHash(_result.AuditRootHash)</code></div>
+                    <div><span>peer audit root</span><code title="@_result.PeerAuditRootHash">@ShortHash(_result.PeerAuditRootHash)</code></div>
+                    <div class="scenario-detail-wide"><span>payload</span><strong>@_result.Payload</strong></div>
+                </div>
+            </div>
+        }
+
+        @if (_history.Count > 0)
+        {
+            <div class="section-title" style="margin-top:1rem">History</div>
+            <div class="policy-history">
+                @foreach (var h in _history)
+                {
+                    <div class="policy-history-row">
+                        <span class="text-muted">@h.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                        <span class="badge @BadgeClass(h.Decision)">@h.Decision</span>
+                        <span>@h.SenderRegion → @h.RecipientRegion</span>
+                        <span class="text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@h.Reason</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+</div>
+
+@code {
+    private ScenarioResult? _result;
+    private bool _running;
+    private string _name            = "";
+    private string _slug            = "";
+    private string _node            = "RS";
+    private string _senderRegion    = DemoState.RsRegion;
+    private string _recipientRegion = DemoState.RuRegion;
+    private int    _trustTier       = 1;
+    private string _payload         = "";
+
+    private readonly List<(DateTimeOffset Timestamp, string Decision, string SenderRegion, string RecipientRegion, string Reason)> _history = [];
+
+    protected override void OnInitialized()
+    {
+        State.OnChanged += OnStateChanged;
+        ApplyRequest(ScenarioRunRequest.BlockedJurisdiction());
+    }
+
+    private async Task RunPreset(DemoScenario scenario)
+    {
+        ApplyPresetFields(scenario);
+        await RunCustom();
+    }
+
+    private async Task RunCustom()
+    {
+        _running = true;
+        var request = new ScenarioRunRequest(
+            _name, _slug, _node,
+            Norm(_senderRegion), Norm(_recipientRegion),
+            _trustTier < 0 ? 0u : (uint)_trustTier,
+            string.IsNullOrWhiteSpace(_payload) ? "(empty)" : _payload);
+        _result = await State.RunScenarioAsync(request);
+        _history.Insert(0, (DateTimeOffset.UtcNow, _result.Decision, _result.SenderRegion, _result.RecipientRegion, _result.Reason));
+        if (_history.Count > 20) _history.RemoveAt(_history.Count - 1);
+        _running = false;
+    }
+
+    private void ApplyPresetFields(DemoScenario scenario)
+    {
+        var r = scenario switch
+        {
+            DemoScenario.AllowedRsToRu            => ScenarioRunRequest.AllowedCorridor(),
+            DemoScenario.DeniedBlockedJurisdiction => ScenarioRunRequest.BlockedJurisdiction(),
+            DemoScenario.LowTrustTier              => ScenarioRunRequest.LowTrustTier(),
+            DemoScenario.UnknownRegion             => ScenarioRunRequest.UnknownRegion(),
+            DemoScenario.DuplicateIdempotency      => ScenarioRunRequest.AllowedCorridor() with
+            {
+                Name = "Duplicate idempotency key",
+                Slug = "duplicate",
+                Payload = "First and second sends reuse the same idempotency key",
+            },
+            _ => ScenarioRunRequest.BlockedJurisdiction(),
+        };
+        ApplyRequest(r);
+    }
+
+    private void ApplyRequest(ScenarioRunRequest r)
+    {
+        _name = r.Name; _slug = r.Slug; _node = r.Node;
+        _senderRegion = r.SenderRegion; _recipientRegion = r.RecipientRegion;
+        _trustTier = (int)r.TrustTier; _payload = r.Payload;
+    }
+
+    private static string Norm(string v) =>
+        string.IsNullOrWhiteSpace(v) ? "ZZ" : v.Trim().ToUpperInvariant();
+
+    private static string BadgeClass(string d) => d switch
+    {
+        "ALLOW"     => "bg-success",
+        "DENY"      => "bg-danger",
+        "DUPLICATE" => "bg-warning text-dark",
+        _           => "bg-secondary",
+    };
+
+    private static string TextOrDash(string? v) => string.IsNullOrWhiteSpace(v) ? "-" : v;
+
+    private static string ShortHash(string? v) =>
+        string.IsNullOrWhiteSpace(v) ? "-" : v.Length > 12 ? v[..12] + "…" : v;
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}

@@ -210,6 +210,29 @@ public sealed class CrlEntry
     public long RevokedAtUnix { get; init; }
 }
 
+// ── Audit well-known ─────────────────────────────────────────────────────────
+
+public sealed class AuditWellKnown
+{
+    [JsonPropertyName("version")]
+    public int Version { get; init; }
+
+    [JsonPropertyName("timestamp")]
+    public long Timestamp { get; init; }
+
+    [JsonPropertyName("root_hash")]
+    public string RootHash { get; init; } = "";
+
+    [JsonPropertyName("node_id")]
+    public string NodeId { get; init; } = "";
+
+    [JsonPropertyName("applicable_law")]
+    public string ApplicableLaw { get; init; } = "";
+
+    [JsonPropertyName("signature")]
+    public string Signature { get; init; } = "";
+}
+
 // ── Discovery / Connect (v0.2) ────────────────────────────────────────────────
 
 /// <summary>A user returned by a discovery query.</summary>
