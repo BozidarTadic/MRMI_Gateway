@@ -47,6 +47,12 @@ func main() {
 			os.Exit(1)
 		}
 		err = cmdAuditVerify(os.Args[3:])
+	case "node":
+		if len(os.Args) < 3 {
+			usageNode(os.Stderr)
+			os.Exit(1)
+		}
+		err = cmdNode(os.Args[2:])
 	default:
 		usage(os.Stderr)
 		os.Exit(1)
@@ -297,6 +303,10 @@ Usage:
   mrmi audit verify --local --log <path>
   mrmi audit verify --dns --node <node_id>
   mrmi audit verify --https --url <url> [--pubkey <path>]
+  mrmi node status  --url <http-addr> [--token <jwt>] [--api-key <key>]
+  mrmi node peers   --url <http-addr> [--token <jwt>] [--api-key <key>]
+  mrmi node dlq     --url <http-addr> [--token <jwt>] [--api-key <key>]
+  mrmi node apps    --url <http-addr> [--token <jwt>] [--api-key <key>]
   mrmi -version
 `)
 }
