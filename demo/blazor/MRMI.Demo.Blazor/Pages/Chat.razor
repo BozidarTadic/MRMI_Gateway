@@ -427,6 +427,7 @@
             <thead>
                 <tr>
                     <th style="width:82px">Time</th>
+                    <th style="width:86px">Source</th>
                     <th style="width:82px">Direction</th>
                     <th style="width:68px">Decision</th>
                     <th style="width:48px">Tier</th>
@@ -443,6 +444,11 @@
                 {
                     <tr class="@(e.Decision == "DENY" ? "table-danger" : e.Decision == "ERROR" ? "table-warning" : "")">
                         <td>@e.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
+                        <td>
+                            <span class="log-source log-source-@((e.Source ?? "Envelope").ToLowerInvariant())">
+                                @(e.Source ?? "Envelope")
+                            </span>
+                        </td>
                         <td>@e.Direction</td>
                         <td>
                             <span class="badge @(e.Decision == "ALLOW" ? "bg-success" : e.Decision == "DENY" ? "bg-danger" : "bg-warning text-dark")">
@@ -451,7 +457,13 @@
                         </td>
                         <td class="text-muted">@(e.TrustTier?.ToString() ?? "-")</td>
                         <td class="text-muted">@e.Reason</td>
-                        <td>@(e.Payload is not null ? (e.Payload.Length > 40 ? e.Payload[..40] + "…" : e.Payload) : "")</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(e.Label))
+                            {
+                                <span class="log-label">@e.Label</span>
+                            }
+                            <span>@(e.Payload is not null ? (e.Payload.Length > 40 ? e.Payload[..40] + "…" : e.Payload) : "")</span>
+                        </td>
                         <td class="text-muted">@e.Profile</td>
                         <td class="text-muted">@e.NodeId</td>
                         <td class="font-monospace text-muted" style="font-size:0.68rem" title="@e.AuditRootHash">
@@ -464,7 +476,7 @@
                 }
                 @if (!State.Log.Any())
                 {
-                    <tr><td colspan="10" class="text-muted text-center py-2">No activity yet.</td></tr>
+                    <tr><td colspan="11" class="text-muted text-center py-2">No activity yet.</td></tr>
                 }
             </tbody>
         </table>

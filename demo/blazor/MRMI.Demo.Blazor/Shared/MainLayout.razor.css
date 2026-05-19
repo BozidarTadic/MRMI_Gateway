@@ -2,6 +2,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    min-height: 100vh;
 }
 
 main {
@@ -9,17 +10,31 @@ main {
 }
 
 .top-row {
-    background-color: #f7f7f7;
-    border-bottom: 1px solid #d6d5d5;
-    height: 3.5rem;
+    background-color: #ffffff;
+    border-bottom: 1px solid #dfe4ea;
+    min-height: 3.5rem;
     display: flex;
     align-items: center;
+    gap: 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.demo-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    min-width: 0;
+    white-space: nowrap;
 }
 
 .demo-nav {
     display: flex;
     gap: 0.4rem;
     align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
 }
 
 .demo-nav a {
@@ -33,6 +48,34 @@ main {
 
 .demo-nav a:hover,
 .demo-nav a.active {
-    color: #0d6efd;
-    background: #e7f1ff;
+    color: #0b5ed7;
+    background: #eef4ff;
+}
+
+@media (max-width: 900px) {
+    .top-row {
+        align-items: flex-start;
+        flex-direction: column;
+        padding-top: 0.65rem;
+        padding-bottom: 0.65rem;
+    }
+
+    .demo-nav {
+        justify-content: flex-start;
+        width: 100%;
+        margin-left: 0 !important;
+    }
+}
+
+@media (max-width: 560px) {
+    .demo-brand {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.1rem;
+    }
+
+    .demo-nav a {
+        padding: 0.25rem 0.45rem;
+        font-size: 0.78rem;
+    }
 }

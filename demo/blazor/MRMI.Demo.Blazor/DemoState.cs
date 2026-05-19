@@ -255,7 +255,7 @@ public sealed class DemoState : IAsyncDisposable
         var toRegion = fromRegion == RsRegion ? RuRegion : RsRegion;
         var key = $"demo-{_sessionPrefix}:{rsId}:{ruId}:{Interlocked.Increment(ref _seqCounter):D6}";
         var client = fromRegion == RsRegion ? RsClient : RuClient;
-        var result = await SendEnvelopeAsync(client, key, fromRegion, toRegion, 1, text);
+        var result = await SendEnvelopeAsync(client, key, fromRegion, toRegion, 1, text, "Chat");
         return (result.Decision, result.Reason);
     }
 
@@ -341,7 +341,7 @@ public sealed class DemoState : IAsyncDisposable
         uint trustTier,
         string text)
     {
-        var result = await SendEnvelopeAsync(client, key, fromRegion, toRegion, trustTier, text);
+        var result = await SendEnvelopeAsync(client, key, fromRegion, toRegion, trustTier, text, "Scenario", name);
         return new ScenarioResult(
             name,
             result.Decision,
@@ -363,8 +363,8 @@ public sealed class DemoState : IAsyncDisposable
         var key = $"scenario-{_sessionPrefix}:duplicate:{Interlocked.Increment(ref _seqCounter):D6}";
         var nodeLabel = string.Equals(request.Node, "RU", StringComparison.OrdinalIgnoreCase) ? "RU" : "RS";
         var client = nodeLabel == "RU" ? RuClient : RsClient;
-        await SendEnvelopeAsync(client, key, request.SenderRegion, request.RecipientRegion, request.TrustTier, request.Payload);
-        var result = await SendEnvelopeAsync(client, key, request.SenderRegion, request.RecipientRegion, request.TrustTier, request.Payload);
+        await SendEnvelopeAsync(client, key, request.SenderRegion, request.RecipientRegion, request.TrustTier, request.Payload, "Scenario", request.Name);
+        var result = await SendEnvelopeAsync(client, key, request.SenderRegion, request.RecipientRegion, request.TrustTier, request.Payload, "Scenario", request.Name);
         return new ScenarioResult(
             request.Name,
             result.Decision,
@@ -387,7 +387,9 @@ public sealed class DemoState : IAsyncDisposable
         string fromRegion,
         string toRegion,
         uint trustTier,
-        string text)
+        string text,
+        string? source = null,
+        string? label = null)
     {
         try
         {
@@ -408,7 +410,9 @@ public sealed class DemoState : IAsyncDisposable
                     AuditRootHash: result.AuditRootHash,
                     PeerAuditRootHash: result.PeerAuditRootHash,
                     Profile: result.Profile, NodeId: result.NodeId,
-                    TrustTier: trustTier));
+                    TrustTier: trustTier,
+                    Source: source ?? InferLogSource(key),
+                    Label: label));
                 if (_log.Count > 200) _log.RemoveAt(_log.Count - 1);
             }
             OnChanged?.Invoke();
@@ -425,7 +429,11 @@ public sealed class DemoState : IAsyncDisposable
             lock (_lock)
             {
                 _log.Insert(0, new LogEntry(DateTimeOffset.UtcNow,
-                    $"{fromRegion} → {toRegion}", "ERROR", ex.Message, key));
+                    $"{fromRegion} → {toRegion}", "ERROR", ex.Message, key,
+                    Payload: text,
+                    TrustTier: trustTier,
+                    Source: source ?? InferLogSource(key),
+                    Label: label));
                 if (_log.Count > 200) _log.RemoveAt(_log.Count - 1);
             }
             OnChanged?.Invoke();
@@ -465,8 +473,16 @@ public sealed class DemoState : IAsyncDisposable
     {
         var isRs = string.Equals(fromRegion, RsRegion, StringComparison.OrdinalIgnoreCase);
         var key = $"direct-{_sessionPrefix}:{Interlocked.Increment(ref _seqCounter):D6}";
-        var result = await SendEnvelopeAsync(isRs ? RsClient : RuClient, key, fromRegion, toRegion, 1, text);
+        var result = await SendEnvelopeAsync(isRs ? RsClient : RuClient, key, fromRegion, toRegion, 1, text, "Direct");
         return (result.Decision, result.Reason);
+    }
+
+    private static string InferLogSource(string key)
+    {
+        if (key.StartsWith("scenario-", StringComparison.OrdinalIgnoreCase)) return "Scenario";
+        if (key.StartsWith("direct-", StringComparison.OrdinalIgnoreCase)) return "Direct";
+        if (key.StartsWith("demo-", StringComparison.OrdinalIgnoreCase)) return "Chat";
+        return "Envelope";
     }
 
     // ── Audit verification ───────────────────────────────────────────────────
@@ -743,7 +759,9 @@ public sealed record LogEntry(
     string? PeerAuditRootHash = null,
     string? Profile = null,
     string? NodeId = null,
-    uint? TrustTier = null
+    uint? TrustTier = null,
+    string? Source = null,
+    string? Label = null
 )
 {
     public bool IsAllow => Decision == "ALLOW";

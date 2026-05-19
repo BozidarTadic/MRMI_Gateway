@@ -338,6 +338,39 @@ a, .btn-link { color: #0071c1; }
 .corridor-log .table-dark { --bs-table-bg: transparent; }
 .corridor-log td, .corridor-log th { font-size: 0.77rem; vertical-align: middle; }
 
+.log-source {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    padding: 0.08rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: #343a40;
+    color: #f8f9fa;
+}
+
+.log-source-chat {
+    background: #0b5ed7;
+}
+
+.log-source-scenario {
+    background: #6f42c1;
+}
+
+.log-source-direct {
+    background: #495057;
+}
+
+.log-label {
+    display: block;
+    color: #c9b6ff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.15;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    Log page  (/log)
    ══════════════════════════════════════════════════════════════════ */
@@ -576,5 +609,271 @@ a, .btn-link { color: #0071c1; }
 
     .scenario-detail-wide {
         grid-column: auto;
+    }
+}
+
+/* Shared demo polish */
+
+:root {
+    --mrmi-bg: #f5f7fa;
+    --mrmi-surface: #ffffff;
+    --mrmi-border: #dfe4ea;
+    --mrmi-border-soft: #edf1f5;
+    --mrmi-text: #212529;
+    --mrmi-muted: #6c757d;
+    --mrmi-rs: #0b5ed7;
+    --mrmi-ru: #b02a37;
+}
+
+html,
+body {
+    min-height: 100%;
+    background: var(--mrmi-bg);
+    color: var(--mrmi-text);
+}
+
+article {
+    background: var(--mrmi-bg);
+}
+
+.content {
+    padding-top: 0;
+}
+
+.app-layout,
+.log-layout,
+.nodes-layout,
+.metrics-layout {
+    background: var(--mrmi-bg);
+}
+
+.nodes-layout,
+.metrics-layout,
+.log-layout {
+    padding: 1rem;
+}
+
+.nodes-header,
+.metrics-header {
+    min-height: 2.3rem;
+}
+
+.nodes-header h5,
+.metrics-header h5 {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.node-card,
+.scenario-panel,
+.metrics-panel,
+.counter-card,
+.audit-card,
+.auth-card,
+.conn-card {
+    border-color: var(--mrmi-border);
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.scenario-panel,
+.metrics-panel,
+.audit-card,
+.auth-card {
+    overflow-x: auto;
+}
+
+.section-title,
+.node-section-title {
+    letter-spacing: 0;
+}
+
+.btn {
+    border-radius: 0.375rem;
+}
+
+.btn-primary {
+    background-color: var(--mrmi-rs);
+    border-color: var(--mrmi-rs);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+    background-color: #084fb8;
+    border-color: #084fb8;
+}
+
+.app-bar,
+.chat-input-bar {
+    background: var(--mrmi-surface);
+}
+
+.app-main {
+    background: var(--mrmi-surface);
+}
+
+.panel-rs .panel-top {
+    background: #eef4ff;
+    border-bottom-color: #bfd2f6;
+}
+
+.panel-ru .panel-top {
+    background: #fff1f2;
+    border-bottom-color: #f0c1c7;
+}
+
+.panel-rs .panel-top-label {
+    color: #084298;
+}
+
+.panel-ru .panel-top-label {
+    color: #842029;
+}
+
+.chat-avatar-rs {
+    background: var(--mrmi-rs);
+}
+
+.chat-avatar-ru,
+.msg-ru {
+    background: var(--mrmi-ru);
+}
+
+.btn-corridor-rs {
+    background: var(--mrmi-rs);
+}
+
+.btn-corridor-rs:hover,
+.btn-corridor-rs:focus {
+    background: #084298;
+}
+
+.btn-corridor-ru {
+    background: var(--mrmi-ru);
+}
+
+.btn-corridor-ru:hover,
+.btn-corridor-ru:focus {
+    background: #842029;
+}
+
+.scenario-form input,
+.scenario-form select,
+.auth-key-row input {
+    min-width: 0;
+}
+
+.scenario-result-card,
+.node-facts div,
+.scenario-detail-grid div,
+.audit-facts > div {
+    border-color: var(--mrmi-border-soft);
+}
+
+.scenario-result-head,
+.scenario-detail-grid strong,
+.scenario-detail-grid code,
+.audit-facts strong,
+.audit-facts code,
+.node-facts strong {
+    min-width: 0;
+}
+
+.node-log-row,
+.sim-history-row,
+.disc-history-row,
+.policy-history-row,
+.audit-history-row,
+.auth-history-row {
+    min-width: 0;
+}
+
+.node-log-row > *,
+.sim-history-row > *,
+.disc-history-row > *,
+.policy-history-row > *,
+.audit-history-row > *,
+.auth-history-row > * {
+    min-width: 0;
+}
+
+@media (max-width: 900px) {
+    .app-layout,
+    .log-layout,
+    .nodes-layout,
+    .metrics-layout {
+        height: auto;
+        min-height: calc(100vh - 3.5rem);
+        overflow: visible;
+    }
+
+    .app-main,
+    .audit-grid,
+    .auth-grid,
+    .conn-status-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .panel-rs {
+        border-right: 0;
+        border-bottom: 1px solid var(--mrmi-border);
+    }
+
+    .node-card-head,
+    .nodes-header,
+    .metrics-header,
+    .scenario-runbar,
+    .auth-key-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .auth-key-row label {
+        margin-bottom: -0.2rem;
+    }
+
+    .counter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .audit-history-row,
+    .disc-history-row,
+    .policy-history-row,
+    .sim-history-row,
+    .auth-history-row,
+    .node-log-row {
+        grid-template-columns: 1fr;
+        gap: 0.25rem;
+        padding: 0.45rem 0;
+        border-bottom: 1px solid var(--mrmi-border-soft);
+    }
+}
+
+@media (max-width: 560px) {
+    .nodes-layout,
+    .metrics-layout,
+    .log-layout {
+        padding: 0.75rem;
+    }
+
+    .app-bar,
+    .panel-top,
+    .chat-view-header,
+    .chat-input-bar {
+        flex-wrap: wrap;
+    }
+
+    .counter-grid,
+    .node-facts,
+    .audit-facts {
+        grid-template-columns: 1fr;
+    }
+
+    .counter-value {
+        font-size: 1.55rem;
+    }
+
+    .msg-bubble {
+        max-width: 88%;
     }
 }
