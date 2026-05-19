@@ -3,10 +3,13 @@ package logger
 import (
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"time"
 )
 
-var l *slog.Logger = slog.Default()
+var l atomic.Pointer[slog.Logger]
+
+func init() { l.Store(slog.Default()) }
 
 // Init configures the global logger from config values.
 // level: "debug" | "info" | "warn" | "error" (default: "info")
@@ -41,11 +44,12 @@ func Init(level, format string) {
 		h = slog.NewTextHandler(os.Stderr, opts)
 	}
 
-	l = slog.New(h)
-	slog.SetDefault(l)
+	nl := slog.New(h)
+	l.Store(nl)
+	slog.SetDefault(nl)
 }
 
-func Info(msg string, args ...any)  { l.Info(msg, args...) }
-func Warn(msg string, args ...any)  { l.Warn(msg, args...) }
-func Error(msg string, args ...any) { l.Error(msg, args...) }
-func Debug(msg string, args ...any) { l.Debug(msg, args...) }
+func Info(msg string, args ...any)  { l.Load().Info(msg, args...) }
+func Warn(msg string, args ...any)  { l.Load().Warn(msg, args...) }
+func Error(msg string, args ...any) { l.Load().Error(msg, args...) }
+func Debug(msg string, args ...any) { l.Load().Debug(msg, args...) }

@@ -12,14 +12,17 @@ import (
 
 func TestInit_JSONFormat(t *testing.T) {
 	old := os.Stderr
-	r, w, _ := os.Pipe()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = old })
 
 	logger.Init("info", "json")
 	logger.Info("test message", "pkg", "policy", "region_from", "RS")
 
 	w.Close()
-	os.Stderr = old
 
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
@@ -50,8 +53,12 @@ func TestInit_TextFormat(t *testing.T) {
 
 func TestInit_LevelFiltering(t *testing.T) {
 	old := os.Stderr
-	r, w, _ := os.Pipe()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = old })
 
 	logger.Init("warn", "json")
 	logger.Debug("should not appear")
@@ -59,7 +66,6 @@ func TestInit_LevelFiltering(t *testing.T) {
 	logger.Warn("this should appear")
 
 	w.Close()
-	os.Stderr = old
 
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
