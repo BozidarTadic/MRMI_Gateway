@@ -352,6 +352,29 @@ public sealed class DemoState : IAsyncDisposable
         OnChanged?.Invoke();
     }
 
+    public MetricsSummary GetMetrics()
+    {
+        lock (_lock)
+        {
+            var total      = _log.Count;
+            var allowed    = _log.Count(e => e.Decision is "ALLOW" or "ALLOW/DUMMY" or "ALLOW/TRANSIT_CACHED");
+            var denied     = _log.Count(e => e.Decision == "DENY");
+            var errors     = _log.Count(e => e.Decision == "ERROR");
+            var duplicates = _log.Count(e => e.Decision == "DUPLICATE");
+            var byNode = _log
+                .Where(e => !string.IsNullOrEmpty(e.NodeId))
+                .GroupBy(e => e.NodeId!)
+                .OrderBy(g => g.Key)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new NodeMetrics(
+                        g.Count(),
+                        g.Count(e => e.Decision is "ALLOW" or "ALLOW/DUMMY" or "ALLOW/TRANSIT_CACHED"),
+                        g.Count(e => e.Decision == "DENY")));
+            return new MetricsSummary(total, allowed, denied, errors, duplicates, byNode);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_cts is not null)
@@ -452,6 +475,17 @@ public sealed record NodeSnapshot(
     IReadOnlyList<AuditEntry> Audit,
     IReadOnlyList<DlqEntry> Dlq,
     string? Error
+);
+
+public sealed record NodeMetrics(int Total, int Allowed, int Denied);
+
+public sealed record MetricsSummary(
+    int Total,
+    int Allowed,
+    int Denied,
+    int Errors,
+    int Duplicates,
+    IReadOnlyDictionary<string, NodeMetrics> ByNode
 );
 
 public sealed record ChatMessage(

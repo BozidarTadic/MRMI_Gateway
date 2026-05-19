@@ -1,0 +1,226 @@
+@page "/metrics"
+@inject DemoState State
+@implements IDisposable
+
+<PageTitle>Metrics</PageTitle>
+
+<div class="metrics-layout">
+
+    <div class="metrics-header">
+        <div>
+            <h5 class="mb-1">Metrics</h5>
+            <div class="text-muted small">Derived from corridor activity in this session. Use the Chat page to generate traffic.</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Refresh">Refresh</button>
+    </div>
+
+    <!-- ── Counter cards ────────────────────────────────────────────── -->
+
+    <div class="counter-grid">
+        <div class="counter-card" style="--accent:#6c757d">
+            <div class="counter-label">Total</div>
+            <div class="counter-value">@_metrics.Total</div>
+        </div>
+        <div class="counter-card" style="--accent:#198754">
+            <div class="counter-label">Allowed</div>
+            <div class="counter-value text-success">@_metrics.Allowed</div>
+        </div>
+        <div class="counter-card" style="--accent:#dc3545">
+            <div class="counter-label">Denied</div>
+            <div class="counter-value text-danger">@_metrics.Denied</div>
+        </div>
+        <div class="counter-card" style="--accent:#ffc107">
+            <div class="counter-label">Errors</div>
+            <div class="counter-value text-warning">@_metrics.Errors</div>
+        </div>
+        <div class="counter-card" style="--accent:#0dcaf0">
+            <div class="counter-label">Duplicates</div>
+            <div class="counter-value text-info">@_metrics.Duplicates</div>
+        </div>
+    </div>
+
+    <!-- ── Per-node visibility ──────────────────────────────────────── -->
+
+    <div class="metrics-panel">
+        <div class="section-title">Per-node visibility</div>
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Node ID</th>
+                    <th class="text-end">Total</th>
+                    <th class="text-end text-success">Allowed</th>
+                    <th class="text-end text-danger">Denied</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_metrics.ByNode.Count == 0)
+                {
+                    <tr>
+                        <td colspan="4" class="text-muted text-center py-3">No data yet — send a message from the Chat page.</td>
+                    </tr>
+                }
+                @foreach (var (nodeId, nm) in _metrics.ByNode)
+                {
+                    <tr>
+                        <td class="font-monospace small">@nodeId</td>
+                        <td class="text-end">@nm.Total</td>
+                        <td class="text-end text-success">@nm.Allowed</td>
+                        <td class="text-end text-danger">@nm.Denied</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ── Jurisdiction request simulator ──────────────────────────── -->
+
+    <div class="metrics-panel">
+        <div class="section-title">Jurisdiction request simulator</div>
+        <div class="text-muted small mb-2">
+            Simulate whether a jurisdiction may access data held in a specific region.
+        </div>
+
+        <div class="scenario-form">
+            <label>
+                <span>Requester jurisdiction</span>
+                <input class="form-control form-control-sm" maxlength="8"
+                       @bind="_requester" @bind:event="oninput" placeholder="e.g. EU" />
+            </label>
+            <label>
+                <span>Data holder</span>
+                <select class="form-select form-select-sm" @bind="_dataHolder">
+                    <option value="RS">RS node</option>
+                    <option value="RU">RU node</option>
+                </select>
+            </label>
+            <label>
+                <span>Trust tier</span>
+                <input class="form-control form-control-sm" type="number" min="0" max="3"
+                       @bind="_trustTier" @bind:event="oninput" />
+            </label>
+            <label class="scenario-payload">
+                <span>Data class</span>
+                <input class="form-control form-control-sm"
+                       @bind="_dataClass" @bind:event="oninput" placeholder="e.g. personal-data" />
+            </label>
+        </div>
+
+        <div class="scenario-runbar">
+            <div class="text-muted small">
+                @if (_simRunning)
+                {
+                    <span>Simulating...</span>
+                }
+                else if (_simResult is not null)
+                {
+                    <span>Last: <strong>@_simResult.SenderRegion → @_simResult.RecipientRegion</strong></span>
+                }
+            </div>
+            <button type="button" class="btn btn-sm btn-primary"
+                    @onclick="RunSimulation" disabled="@_simRunning">
+                @(_simRunning ? "Running..." : "Simulate request")
+            </button>
+        </div>
+
+        @if (_simResult is not null)
+        {
+            <div class="scenario-result-card">
+                <div class="scenario-result-head">
+                    <span class="badge @BadgeClass(_simResult.Decision)">@_simResult.Decision</span>
+                    <strong>@_simResult.Name</strong>
+                    <span class="text-muted">@_simResult.SenderRegion → @_simResult.RecipientRegion</span>
+                </div>
+                <div class="scenario-detail-grid">
+                    <div><span>reason</span><strong>@_simResult.Reason</strong></div>
+                    <div><span>node</span><strong>@_simResult.Node</strong></div>
+                    <div><span>trust tier</span><strong>@_simResult.TrustTier</strong></div>
+                    <div><span>profile</span><strong>@TextOrDash(_simResult.Profile)</strong></div>
+                    <div><span>local audit root</span><code title="@_simResult.AuditRootHash">@ShortHash(_simResult.AuditRootHash)</code></div>
+                    <div><span>peer audit root</span><code title="@_simResult.PeerAuditRootHash">@ShortHash(_simResult.PeerAuditRootHash)</code></div>
+                    <div class="scenario-detail-wide"><span>payload sent</span><strong>@_simResult.Payload</strong></div>
+                </div>
+            </div>
+        }
+
+        @if (_history.Count > 0)
+        {
+            <div class="section-title" style="margin-top:1rem">Request history</div>
+            <div class="sim-history">
+                @foreach (var h in _history)
+                {
+                    <div class="sim-history-row">
+                        <span class="text-muted">@h.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                        <span class="badge @BadgeClass(h.Decision)">@h.Decision</span>
+                        <span>@h.SenderRegion → @h.RecipientRegion</span>
+                        <span class="text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@h.Reason</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+</div>
+
+@code {
+    private MetricsSummary _metrics = new(0, 0, 0, 0, 0, new Dictionary<string, NodeMetrics>());
+    private bool _simRunning;
+    private ScenarioResult? _simResult;
+    private readonly List<(DateTimeOffset Timestamp, string Decision, string SenderRegion, string RecipientRegion, string Reason)> _history = [];
+
+    private string _requester   = "EU";
+    private string _dataHolder  = "RS";
+    private int    _trustTier   = 1;
+    private string _dataClass   = "personal-data";
+
+    protected override void OnInitialized()
+    {
+        State.OnChanged += OnStateChanged;
+        Refresh();
+    }
+
+    private void Refresh() => _metrics = State.GetMetrics();
+
+    private async Task RunSimulation()
+    {
+        _simRunning = true;
+        var requester  = string.IsNullOrWhiteSpace(_requester) ? "ZZ" : _requester.Trim().ToUpperInvariant();
+        var holder     = _dataHolder == "RU" ? "RU" : "RS";
+        var dataClass  = string.IsNullOrWhiteSpace(_dataClass) ? "data" : _dataClass.Trim();
+        var request    = new ScenarioRunRequest(
+            Name:            $"{requester} → {holder} ({dataClass})",
+            Slug:            "jurisdiction",
+            Node:            holder,
+            SenderRegion:    requester,
+            RecipientRegion: holder,
+            TrustTier:       _trustTier < 0 ? 0u : (uint)_trustTier,
+            Payload:         $"[{dataClass}] jurisdiction data request from {requester}");
+
+        _simResult = await State.RunScenarioAsync(request);
+        _history.Insert(0, (DateTimeOffset.UtcNow, _simResult.Decision, _simResult.SenderRegion, _simResult.RecipientRegion, _simResult.Reason));
+        if (_history.Count > 20) _history.RemoveAt(_history.Count - 1);
+
+        _metrics    = State.GetMetrics();
+        _simRunning = false;
+    }
+
+    private static string BadgeClass(string decision) => decision switch
+    {
+        "ALLOW" => "bg-success",
+        "DENY"  => "bg-danger",
+        "ERROR" => "bg-warning text-dark",
+        _       => "bg-secondary",
+    };
+
+    private static string TextOrDash(string? v) => string.IsNullOrWhiteSpace(v) ? "-" : v;
+
+    private static string ShortHash(string? v)
+        => string.IsNullOrWhiteSpace(v) ? "-" : v.Length > 12 ? v[..12] + "…" : v;
+
+    private void OnStateChanged()
+    {
+        _metrics = State.GetMetrics();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}
