@@ -53,6 +53,12 @@ func main() {
 			os.Exit(1)
 		}
 		err = cmdNode(os.Args[2:])
+	case "token":
+		if len(os.Args) < 3 {
+			usageToken(os.Stderr)
+			os.Exit(1)
+		}
+		err = cmdToken(os.Args[2:])
 	default:
 		usage(os.Stderr)
 		os.Exit(1)
@@ -307,6 +313,7 @@ Usage:
   mrmi node peers   --url <http-addr> [--token <jwt>] [--api-key <key>]
   mrmi node dlq     --url <http-addr> [--token <jwt>] [--api-key <key>]
   mrmi node apps    --url <http-addr> [--token <jwt>] [--api-key <key>]
+  mrmi token issue  --url <http-addr> --api-key <key> [--scope <read|operator>] [--ttl <duration>]
   mrmi -version
 `)
 }
