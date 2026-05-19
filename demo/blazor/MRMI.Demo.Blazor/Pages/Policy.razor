@@ -72,7 +72,7 @@
         <div class="scenario-runbar">
             <div class="text-muted small">@_name</div>
             <button type="button" class="btn btn-sm btn-primary"
-                    @onclick="RunCustom" disabled="@_running">
+                    @onclick="() => RunCustom()" disabled="@_running">
                 @(_running ? "Running…" : "Run scenario")
             </button>
         </div>
@@ -107,7 +107,7 @@
                     <div class="policy-history-row">
                         <span class="text-muted">@h.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
                         <span class="badge @BadgeClass(h.Decision)">@h.Decision</span>
-                        <span>@h.SenderRegion → @h.RecipientRegion</span>
+                        <span class="text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@h.Label</span>
                         <span class="text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@h.Reason</span>
                     </div>
                 }
@@ -128,7 +128,8 @@
     private int    _trustTier       = 1;
     private string _payload         = "";
 
-    private readonly List<(DateTimeOffset Timestamp, string Decision, string SenderRegion, string RecipientRegion, string Reason)> _history = [];
+    private record HistoryEntry(string Label, DateTimeOffset Timestamp, string Decision, string SenderRegion, string RecipientRegion, string Reason);
+    private readonly List<HistoryEntry> _history = [];
 
     protected override void OnInitialized()
     {
@@ -139,10 +140,19 @@
     private async Task RunPreset(DemoScenario scenario)
     {
         ApplyPresetFields(scenario);
-        await RunCustom();
+        var label = scenario switch
+        {
+            DemoScenario.AllowedRsToRu             => "Allowed corridor",
+            DemoScenario.DeniedBlockedJurisdiction  => "Blocked jurisdiction",
+            DemoScenario.LowTrustTier               => "Low trust tier",
+            DemoScenario.UnknownRegion              => "Unknown region",
+            DemoScenario.DuplicateIdempotency       => "Duplicate key",
+            _                                       => "Preset",
+        };
+        await RunCustom(label);
     }
 
-    private async Task RunCustom()
+    private async Task RunCustom(string label = "Custom")
     {
         _running = true;
         var request = new ScenarioRunRequest(
@@ -151,7 +161,7 @@
             _trustTier < 0 ? 0u : (uint)_trustTier,
             string.IsNullOrWhiteSpace(_payload) ? "(empty)" : _payload);
         _result = await State.RunScenarioAsync(request);
-        _history.Insert(0, (DateTimeOffset.UtcNow, _result.Decision, _result.SenderRegion, _result.RecipientRegion, _result.Reason));
+        _history.Insert(0, new(label, DateTimeOffset.UtcNow, _result.Decision, _result.SenderRegion, _result.RecipientRegion, _result.Reason));
         if (_history.Count > 20) _history.RemoveAt(_history.Count - 1);
         _running = false;
     }

@@ -1,5 +1,6 @@
 @page "/auth"
 @inject DemoState State
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Authentication</PageTitle>
@@ -86,6 +87,8 @@
                             <span class="badge @StatusBadge(result.StatusCode)">@(result.StatusCode == 0 ? "ERR" : result.StatusCode.ToString())</span>
                             <strong>@result.Action</strong>
                             <span class="ms-auto text-muted" style="font-size:0.68rem">@result.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                            <button class="btn btn-sm btn-outline-secondary" style="padding:0.1rem 0.4rem;font-size:0.7rem;margin-left:0.3rem"
+                                    @onclick='() => CopyToClipboard(result.Body)' title="Copy to clipboard">⎘</button>
                         </div>
                         <div class="auth-result-body">@result.Body</div>
                     </div>
@@ -188,6 +191,9 @@
         >= 400        => "bg-warning text-dark",
         _             => "bg-secondary",
     };
+
+    private async Task CopyToClipboard(string text) =>
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
     public void Dispose() => State.OnChanged -= OnStateChanged;

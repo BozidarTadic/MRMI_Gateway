@@ -141,9 +141,10 @@
     private bool _ruVerifying;
     private readonly List<AuditVerificationResult> _history = [];
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         State.OnChanged += OnStateChanged;
+        await VerifyAll();
     }
 
     private IEnumerable<(string Region, AuditVerificationResult? Result, bool Verifying)> VerificationStates() =>

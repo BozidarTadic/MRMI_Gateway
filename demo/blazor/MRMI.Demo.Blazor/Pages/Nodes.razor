@@ -144,11 +144,15 @@
     private bool _probing;
     private bool _dlqBusy;
     private readonly Dictionary<string, string> _dlqFeedback = new();
+    private System.Threading.Timer? _refreshTimer;
 
     protected override async Task OnInitializedAsync()
     {
         State.OnChanged += OnStateChanged;
         await LoadNodes();
+        _refreshTimer = new System.Threading.Timer(
+            async _ => { _nodes = await State.LoadNodeSnapshotsAsync(); await InvokeAsync(StateHasChanged); },
+            null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     private async Task LoadNodes()
@@ -193,5 +197,9 @@
     }
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
-    public void Dispose() => State.OnChanged -= OnStateChanged;
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+        State.OnChanged -= OnStateChanged;
+    }
 }

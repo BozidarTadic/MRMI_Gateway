@@ -178,7 +178,11 @@
         Refresh();
     }
 
-    private void Refresh() => _metrics = State.GetMetrics();
+    private void Refresh()
+    {
+        _metrics = State.GetMetrics();
+        StateHasChanged();
+    }
 
     private async Task RunSimulation()
     {
