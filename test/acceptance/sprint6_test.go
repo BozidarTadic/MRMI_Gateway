@@ -106,8 +106,11 @@ func TestAPIKey_Unauthorized(t *testing.T) {
 	base, _ := startNodeWithCfg(t, cfg)
 
 	// No key → 401
-	resp, _ := http.Post(base+"/api/v1/peers/register", "application/json",
+	resp, err := http.Post(base+"/api/v1/peers/register", "application/json",
 		jsonBody(t, map[string]any{"addr": "localhost:9999"}))
+	if err != nil {
+		t.Fatalf("POST failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401 without key, got %d", resp.StatusCode)
@@ -118,7 +121,10 @@ func TestAPIKey_Unauthorized(t *testing.T) {
 		jsonBody(t, map[string]any{"addr": "localhost:9999"}))
 	req.Header.Set("X-MRMI-Key", "wrong-key")
 	req.Header.Set("Content-Type", "application/json")
-	resp2, _ := http.DefaultClient.Do(req)
+	resp2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST failed: %v", err)
+	}
 	defer resp2.Body.Close()
 	if resp2.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401 with wrong key, got %d", resp2.StatusCode)
@@ -137,7 +143,10 @@ func TestAPIKey_Authorized(t *testing.T) {
 		jsonBody(t, map[string]any{"addr": "localhost:9999", "region": "RU", "node_scope": "regional"}))
 	req.Header.Set("X-MRMI-Key", "mrmi_op_secret")
 	req.Header.Set("Content-Type", "application/json")
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 with correct key, got %d", resp.StatusCode)
