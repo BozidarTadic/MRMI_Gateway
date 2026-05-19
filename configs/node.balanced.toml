@@ -6,6 +6,8 @@ operator_id     = "example-operator"
 policy_version  = "0.1.0"
 applicable_law  = "RS-GDPR"
 signed_by       = "ed25519:REPLACE_ME"
+log_level       = "info"
+log_format      = "text"
 
 [profile]
 name            = "balanced"

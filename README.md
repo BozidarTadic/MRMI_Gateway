@@ -57,9 +57,17 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.4
+## Current Status — v0.5
 
-MRMI Gateway includes the core node runtime, policy engine, Merkle audit log, mTLS gRPC transport, REST management API, SDKs, embedded dashboard, persistence backends, federated discovery, transit cache, rate limiting, and local RS/RU demo corridor.
+MRMI Gateway includes the core node runtime, policy engine, Merkle audit log, mTLS gRPC transport, REST management API, SDKs, embedded dashboard, persistence backends, federated discovery, transit cache, rate limiting, Prometheus metrics, persistent audit storage, and local RS/RU demo corridor.
+
+### Sprint 10 (v0.5)
+
+- [x] `GET /metrics` — Prometheus text-format endpoint (`metrics_addr` in TOML); counters for allow, deny, duplicate, DLQ depth, transit cache, rate-limit denials, peer count
+- [x] `mrmi node status / peers / dlq / apps` — operator CLI subcommands for inspecting a live node
+- [x] `mrmi token issue` — CLI subcommand to issue a JWT against a running node
+- [x] Audit log persistence — `audit.Log` wired into NodeStore (bbolt / Redis); entries survive restarts; `GET /api/v1/audit/latest` draws from the store when available
+- [x] Sprint 10 acceptance tests + README v0.5
 
 Roadmap planning and contributor work are tracked in GitHub Projects instead of this README.
 
