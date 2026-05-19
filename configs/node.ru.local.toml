@@ -53,3 +53,11 @@ region       = "RU"
 [apps.mrmi-demo.users.dmitri-01]
 display_hint = "Дмитрий Козлов"
 region       = "RU"
+
+# Manual-approval app — connect requests return PENDING (requires human approval)
+[apps.mrmi-demo-manual]
+auto_accept = "manual"
+
+[apps.mrmi-demo-manual.users.natasha-01]
+display_hint = "Наташа Волкова (manual)"
+region       = "RU"

@@ -1,0 +1,30 @@
+.disc-empty {
+    padding: 1rem;
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.82rem;
+    font-style: italic;
+    border: 1px dashed #dee2e6;
+    border-radius: 0.375rem;
+    margin-top: 0.65rem;
+}
+
+.disc-connect-btn {
+    padding: 0.1rem 0.5rem;
+    font-size: 0.72rem;
+}
+
+.disc-history {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.5rem;
+}
+
+.disc-history-row {
+    display: grid;
+    grid-template-columns: 72px 90px 100px minmax(0, 1fr);
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.76rem;
+}

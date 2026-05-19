@@ -17,6 +17,9 @@ public sealed class DemoState : IAsyncDisposable
     private List<DiscoveryResult> _rsUsers = [];
     private List<DiscoveryResult> _ruUsers = [];
 
+    public string? RsDiscoveryError { get; private set; }
+    public string? RuDiscoveryError { get; private set; }
+
     // key format: demo-{session}:{rsUserId}:{ruUserId}:{seq}
     // ':' used as separator because user IDs contain '-' but never ':'
     private readonly Dictionary<(string RsId, string RuId), List<ChatMessage>> _chats = new();
@@ -49,19 +52,67 @@ public sealed class DemoState : IAsyncDisposable
 
     public async Task LoadUsersAsync()
     {
+        await Task.WhenAll(
+            LoadNodeUsersAsync(RsClient, isRs: true),
+            LoadNodeUsersAsync(RuClient, isRs: false));
+        OnChanged?.Invoke();
+    }
+
+    private async Task LoadNodeUsersAsync(MrmiClient client, bool isRs)
+    {
         try
         {
-            var rsTask = RsClient.DiscoverAsync("");
-            var ruTask = RuClient.DiscoverAsync("");
-            await Task.WhenAll(rsTask, ruTask);
+            var users = await client.DiscoverAsync("");
             lock (_lock)
             {
-                _rsUsers = [.. rsTask.Result];
-                _ruUsers = [.. ruTask.Result];
+                if (isRs) { _rsUsers = [.. users]; RsDiscoveryError = null; }
+                else { _ruUsers = [.. users]; RuDiscoveryError = null; }
             }
         }
-        catch { }
-        OnChanged?.Invoke();
+        catch (Exception ex)
+        {
+            if (isRs) RsDiscoveryError = ex.Message;
+            else RuDiscoveryError = ex.Message;
+        }
+    }
+
+    public async Task<(IReadOnlyList<DiscoveryResult> Results, string? Error)> SearchUsersAsync(
+        string region, string query)
+    {
+        var isRs = string.Equals(region, RsRegion, StringComparison.OrdinalIgnoreCase);
+        var client = isRs ? RsClient : RuClient;
+        try
+        {
+            var results = await client.DiscoverAsync(query);
+            return (results, null);
+        }
+        catch (Exception ex)
+        {
+            return ([], ex.Message);
+        }
+    }
+
+    public async Task<ConnectAttemptResult> TryConnectAsync(
+        string targetRegion, string targetUserId, string opaqueToken,
+        string requesterId, string requesterRegion)
+    {
+        var isRs = string.Equals(targetRegion, RsRegion, StringComparison.OrdinalIgnoreCase);
+        var client = isRs ? RsClient : RuClient;
+        try
+        {
+            var result = await client.ConnectAsync(opaqueToken, requesterId, requesterRegion);
+            return new ConnectAttemptResult(
+                targetUserId, targetRegion, requesterRegion,
+                result.Status, result.SessionId,
+                result.ExpiresAt > 0 ? DateTimeOffset.FromUnixTimeSeconds(result.ExpiresAt) : null,
+                null, DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            return new ConnectAttemptResult(
+                targetUserId, targetRegion, requesterRegion,
+                "ERROR", null, null, ex.Message, DateTimeOffset.UtcNow);
+        }
     }
 
     public void StartStreaming()
@@ -501,6 +552,17 @@ public sealed record NodeSnapshot(
     IReadOnlyList<AuditEntry> Audit,
     IReadOnlyList<DlqEntry> Dlq,
     string? Error
+);
+
+public sealed record ConnectAttemptResult(
+    string TargetUserId,
+    string TargetRegion,
+    string RequesterRegion,
+    string Status,
+    string? SessionId,
+    DateTimeOffset? ExpiresAt,
+    string? Error,
+    DateTimeOffset Timestamp
 );
 
 public sealed record NodeMetrics(int Total, int Allowed, int Denied);

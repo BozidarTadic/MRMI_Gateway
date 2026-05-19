@@ -137,7 +137,14 @@
                             <div class="chat-list-empty">
                                 <div class="chat-empty-icon">&#128269;</div>
                                 <div class="chat-empty-title">No RU contacts loaded</div>
-                                <div class="chat-empty-hint">Check that the RU gateway is running, then reload contacts.</div>
+                                @if (State.RuDiscoveryError is not null)
+                                {
+                                    <div class="chat-empty-hint text-danger" style="font-size:0.75rem;max-width:220px;word-break:break-word">@State.RuDiscoveryError</div>
+                                }
+                                else
+                                {
+                                    <div class="chat-empty-hint">Check that the RU gateway is running, then reload contacts.</div>
+                                }
                                 <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @onclick="ReloadUsers" disabled="@_loading">
                                     @(_loading ? "Loading..." : "Reload contacts")
                                 </button>
@@ -328,7 +335,14 @@
                             <div class="chat-list-empty">
                                 <div class="chat-empty-icon">&#128269;</div>
                                 <div class="chat-empty-title">No RS contacts loaded</div>
-                                <div class="chat-empty-hint">Check that the RS gateway is running, then reload contacts.</div>
+                                @if (State.RsDiscoveryError is not null)
+                                {
+                                    <div class="chat-empty-hint text-danger" style="font-size:0.75rem;max-width:220px;word-break:break-word">@State.RsDiscoveryError</div>
+                                }
+                                else
+                                {
+                                    <div class="chat-empty-hint">Check that the RS gateway is running, then reload contacts.</div>
+                                }
                                 <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @onclick="ReloadUsers" disabled="@_loading">
                                     @(_loading ? "Loading..." : "Reload contacts")
                                 </button>

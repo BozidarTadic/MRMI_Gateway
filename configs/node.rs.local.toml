@@ -53,3 +53,11 @@ region       = "RS"
 [apps.mrmi-demo.users.stefan-01]
 display_hint = "Stefan Jovanović"
 region       = "RS"
+
+# Manual-approval app — connect requests return PENDING (requires human approval)
+[apps.mrmi-demo-manual]
+auto_accept = "manual"
+
+[apps.mrmi-demo-manual.users.pavle-01]
+display_hint = "Pavle Đorđević (manual)"
+region       = "RS"

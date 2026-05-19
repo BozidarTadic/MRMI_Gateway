@@ -1,0 +1,294 @@
+@page "/discovery"
+@using MRMI.Gateway.Client
+@inject DemoState State
+@implements IDisposable
+
+<PageTitle>Discovery</PageTitle>
+
+<div class="nodes-layout">
+
+    <div class="nodes-header">
+        <div>
+            <h5 class="mb-1">Discovery</h5>
+            <div class="text-muted small">Search for users, initiate connect requests, and observe ACCEPTED / PENDING / ERROR outcomes.</div>
+        </div>
+    </div>
+
+    <!-- ── User search ───────────────────────────────────────────── -->
+
+    <div class="scenario-panel">
+        <div class="section-title">User search</div>
+        <div class="text-muted small mb-2">
+            Search a gateway node by display-name fragment. An empty query returns all users.
+        </div>
+
+        <div class="scenario-presets">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="SearchNoMatch" disabled="@(_searching || _connecting)">
+                No match
+            </button>
+            <button class="btn btn-sm btn-outline-warning" @onclick="UseTokenTwice" disabled="@(_searching || _connecting)">
+                Token reuse (single-use)
+            </button>
+            <button class="btn btn-sm btn-outline-info" @onclick="ConnectManualApp" disabled="@(_searching || _connecting)">
+                PENDING (manual app)
+            </button>
+        </div>
+
+        <div class="scenario-form" style="margin-top:0.75rem">
+            <label>
+                <span>Node</span>
+                <select class="form-select form-select-sm" @bind="_searchRegion">
+                    <option value="RU">RU node</option>
+                    <option value="RS">RS node</option>
+                </select>
+            </label>
+            <label class="scenario-payload">
+                <span>Query</span>
+                <input class="form-control form-control-sm"
+                       @bind="_searchQuery" @bind:event="oninput"
+                       @onkeydown="SearchKeyDown"
+                       placeholder="Display name fragment or user ID" />
+            </label>
+        </div>
+
+        <div class="scenario-runbar">
+            <div class="text-muted small">
+                @if (_searching)
+                {
+                    <span>Searching…</span>
+                }
+                else if (_searchError is not null)
+                {
+                    <span class="text-danger">@_searchError</span>
+                }
+                else if (_searchResults is not null)
+                {
+                    <span>@_searchResults.Count result(s) on @_searchRegion</span>
+                }
+            </div>
+            <button class="btn btn-sm btn-primary" @onclick="DoSearch" disabled="@(_searching || _connecting)">Search</button>
+        </div>
+
+        @if (_searchResults is not null)
+        {
+            @if (_searchResults.Count == 0)
+            {
+                <div class="disc-empty">
+                    No users match "@_searchQuery" on the @_searchRegion node.
+                </div>
+            }
+            else
+            {
+                <table class="table table-sm mb-0 mt-2">
+                    <thead>
+                        <tr>
+                            <th>Display name</th>
+                            <th>User ID</th>
+                            <th>App</th>
+                            <th class="text-end">Token expires</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in _searchResults)
+                        {
+                            <tr>
+                                <td>@r.DisplayHint</td>
+                                <td class="text-muted small font-monospace">@r.UserId</td>
+                                <td class="text-muted small">@r.AppId</td>
+                                <td class="text-end text-muted small font-monospace">
+                                    @(r.TokenExpires > 0
+                                        ? DateTimeOffset.FromUnixTimeSeconds(r.TokenExpires).ToLocalTime().ToString("HH:mm:ss")
+                                        : "-")
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary disc-connect-btn"
+                                            @onclick="() => ConnectResult(r)"
+                                            disabled="@_connecting">
+                                        Connect
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+
+        @if (_connecting)
+        {
+            <div class="text-muted small mt-2">Connecting…</div>
+        }
+    </div>
+
+    <!-- ── Connect attempt history ───────────────────────────────── -->
+
+    @if (_history.Count > 0)
+    {
+        <div class="scenario-panel">
+            <div class="section-title">Connect attempts</div>
+            <div class="disc-history">
+                @foreach (var a in _history)
+                {
+                    <div class="disc-history-row">
+                        <span class="text-muted">@a.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                        <span class="badge @ConnectBadgeClass(a.Status)">@a.Status</span>
+                        <span>@a.RequesterRegion → @a.TargetRegion</span>
+                        <span class="text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                            @(a.Error ?? (a.SessionId is not null ? $"session {a.SessionId[..Math.Min(12, a.SessionId.Length)]}…" : a.TargetUserId))
+                        </span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+</div>
+
+@code {
+    private string _searchRegion = "RU";
+    private string _searchQuery  = "";
+    private bool   _searching;
+    private bool   _connecting;
+    private IReadOnlyList<DiscoveryResult>? _searchResults;
+    private string? _searchError;
+    private readonly List<ConnectAttemptResult> _history = [];
+
+    protected override void OnInitialized()
+    {
+        State.OnChanged += OnStateChanged;
+    }
+
+    // ── Search ────────────────────────────────────────────────────
+
+    private async Task SearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await DoSearch();
+    }
+
+    private async Task DoSearch()
+    {
+        _searching = true;
+        _searchError = null;
+        _searchResults = null;
+        var (results, error) = await State.SearchUsersAsync(_searchRegion, _searchQuery);
+        _searchResults = results;
+        _searchError   = error;
+        _searching = false;
+    }
+
+    // ── Connect ───────────────────────────────────────────────────
+
+    private async Task ConnectResult(DiscoveryResult target)
+    {
+        _connecting = true;
+        var (requesterId, requesterRegion) = DefaultRequester(target.Region);
+        var attempt = await State.TryConnectAsync(
+            target.Region, target.UserId, target.OpaqueToken,
+            requesterId, requesterRegion);
+        _history.Insert(0, attempt);
+        if (_history.Count > 20) _history.RemoveAt(_history.Count - 1);
+        _connecting = false;
+    }
+
+    // ── Scenario presets ──────────────────────────────────────────
+
+    private async Task SearchNoMatch()
+    {
+        _searchRegion  = "RU";
+        _searchQuery   = "nonexistent-user-xkq9z";
+        await DoSearch();
+    }
+
+    private async Task UseTokenTwice()
+    {
+        _searching = true;
+        _searchError = null;
+        _searchResults = null;
+
+        var (results, error) = await State.SearchUsersAsync("RU", "");
+        _searchResults = results;
+        _searchError   = error;
+        _searchRegion  = "RU";
+        _searching = false;
+
+        if (results.Count == 0) return;
+
+        _connecting = true;
+        var target = results[0];
+        var (requesterId, requesterRegion) = DefaultRequester(target.Region);
+
+        // First use — should ACCEPT
+        var first = await State.TryConnectAsync(
+            target.Region, target.UserId, target.OpaqueToken,
+            requesterId, requesterRegion);
+        _history.Insert(0, first);
+
+        // Second use of the same token — should ERROR (single-use)
+        var second = await State.TryConnectAsync(
+            target.Region, target.UserId, target.OpaqueToken,
+            requesterId, requesterRegion);
+        _history.Insert(0, second);
+
+        if (_history.Count > 20) _history.RemoveRange(20, _history.Count - 20);
+        _connecting = false;
+    }
+
+    private async Task ConnectManualApp()
+    {
+        _searching = true;
+        _searchError = null;
+        _searchResults = null;
+        _searchRegion  = "RU";
+        _searchQuery   = "manual";
+
+        var (results, error) = await State.SearchUsersAsync("RU", "manual");
+        _searchResults = results;
+        _searchError   = error;
+        _searching = false;
+
+        if (results.Count == 0)
+        {
+            _searchError = "No manual-app users found. Start the RU gateway with the updated configs/node.ru.local.toml.";
+            return;
+        }
+
+        _connecting = true;
+        var target = results[0];
+        var (requesterId, requesterRegion) = DefaultRequester(target.Region);
+        var attempt = await State.TryConnectAsync(
+            target.Region, target.UserId, target.OpaqueToken,
+            requesterId, requesterRegion);
+        _history.Insert(0, attempt);
+        if (_history.Count > 20) _history.RemoveAt(_history.Count - 1);
+        _connecting = false;
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────
+
+    private (string Id, string Region) DefaultRequester(string targetRegion)
+    {
+        if (string.Equals(targetRegion, DemoState.RsRegion, StringComparison.OrdinalIgnoreCase))
+        {
+            var u = State.RuUsers.Count > 0 ? State.RuUsers[0] : null;
+            return (u?.UserId ?? "demo-ru-user", DemoState.RuRegion);
+        }
+        else
+        {
+            var u = State.RsUsers.Count > 0 ? State.RsUsers[0] : null;
+            return (u?.UserId ?? "demo-rs-user", DemoState.RsRegion);
+        }
+    }
+
+    private static string ConnectBadgeClass(string status) => status switch
+    {
+        "ACCEPTED" => "bg-success",
+        "PENDING"  => "bg-warning text-dark",
+        "DENIED"   => "bg-danger",
+        "ERROR"    => "bg-secondary",
+        _          => "bg-secondary",
+    };
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}
