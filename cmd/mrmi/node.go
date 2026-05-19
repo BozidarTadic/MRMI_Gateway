@@ -176,7 +176,10 @@ func nodeDLQ(w io.Writer, opts nodeOpts) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintf(tw, "INDEX\tENVELOPE_ID\tPEER_ADDR\tATTEMPTS\tFIRST_SEEN\tLAST_ERR\n")
 	for _, e := range entries {
-		firstSeen := time.Unix(e.FirstSeenUnix, 0).UTC().Format(time.RFC3339)
+		firstSeen := "-"
+		if e.FirstSeenUnix > 0 {
+			firstSeen = time.Unix(e.FirstSeenUnix, 0).UTC().Format(time.RFC3339)
+		}
 		fmt.Fprintf(tw, "%d\t%s\t%s\t%d\t%s\t%s\n",
 			e.Index, e.EnvelopeID, e.PeerAddr, e.Attempts, firstSeen, e.LastError)
 	}

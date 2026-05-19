@@ -100,6 +100,20 @@ func TestNodeDLQ_PrintsTable(t *testing.T) {
 	}
 }
 
+func TestNodeDLQ_ZeroTimestampShowsDash(t *testing.T) {
+	_, opts := mockServer(t, "/api/v1/dlq", []map[string]any{
+		{"index": 0, "envelope_id": "key-xyz", "peer_addr": "10.0.0.1:9090", "attempts": 1, "first_seen_unix": 0},
+	})
+
+	var buf bytes.Buffer
+	if err := nodeDLQ(&buf, opts); err != nil {
+		t.Fatalf("nodeDLQ: %v", err)
+	}
+	if strings.Contains(buf.String(), "1970") {
+		t.Errorf("expected '-' for zero timestamp, got epoch:\n%s", buf.String())
+	}
+}
+
 func TestNodeApps_PrintsTable(t *testing.T) {
 	_, opts := mockServer(t, "/api/v1/apps", []map[string]any{
 		{"app_id": "myapp", "webhook_url": "https://example.com/hook"},
