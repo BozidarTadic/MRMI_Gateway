@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -39,16 +38,19 @@ import (
 	"MRMI_Gateway/internal/trustdecay"
 	grpctransport "MRMI_Gateway/internal/transport/grpc"
 	"MRMI_Gateway/internal/webhook"
+	"MRMI_Gateway/internal/logger"
 )
 
 // Run starts the gateway node. configPath is the path to the loaded config file;
 // pass an empty string when config was loaded from defaults (hot-reload is skipped).
 func Run(ctx context.Context, cfg config.Config, configPath string) error {
+	logger.Init(cfg.Node.LogLevel, cfg.Node.LogFormat)
+
 	signingKey, _, err := identity.GenerateKey()
 	if err != nil {
 		return fmt.Errorf("generate signing key: %w", err)
 	}
-	log.Printf("[identity] using ephemeral Ed25519 signing key — set signing_key in [tls] for a persistent key")
+	logger.Warn("using ephemeral Ed25519 signing key — set signing_key in [tls] for a persistent key", "pkg", "identity")
 
 	// Persistent store: bbolt, Redis, or nil (in-memory fallback).
 	switch cfg.Storage.Backend {
@@ -62,7 +64,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 			return fmt.Errorf("open bbolt store: %w", err)
 		}
 		defer s.Close()
-		log.Printf("[store] bbolt backend at %s/mrmi.db", dir)
+		logger.Info("bbolt backend", "pkg", "store", "path", dir+"/mrmi.db")
 		_ = s // store integration wired via NodeStore interface (future: inject into dedup/DLQ/CRL)
 	case "redis":
 		prefix := cfg.Storage.KeyPrefix
@@ -74,10 +76,10 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 			return fmt.Errorf("open redis store: %w", err)
 		}
 		defer s.Close()
-		log.Printf("[store] redis backend at %s (prefix %s)", cfg.Storage.RedisURL, prefix)
+		logger.Info("redis backend", "pkg", "store", "addr", cfg.Storage.RedisURL, "prefix", prefix)
 		_ = s
 	default:
-		log.Printf("[store] using in-memory storage (no persistence)")
+		logger.Info("using in-memory storage (no persistence)", "pkg", "store")
 	}
 
 	seqSend := session.New()
@@ -111,14 +113,14 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	go runPurge(ctx, dedupIndex)
 
 	if cfg.Node.ApplicableLaw == "NONE" && cfg.Profile.Name != "performance" {
-		log.Printf("[warn] applicable_law is NONE on a %s profile node — set a real legal framework before production use", cfg.Profile.Name)
+		logger.Warn("applicable_law is NONE — set a real legal framework before production use", "pkg", "policy", "profile", cfg.Profile.Name)
 	}
 
 	if cfg.Policy.Audit.DNSTXTPublish {
 		if cfg.Policy.Audit.DNSTXTInterval == 0 {
-			log.Printf("[dnstxt] dns_txt_publish=true but dns_txt_interval_s is 0, skipping publisher")
+			logger.Warn("dns_txt_publish=true but dns_txt_interval_s is 0, skipping publisher", "pkg", "dnstxt")
 		} else {
-			log.Printf("[dnstxt] no DNS provider configured; audit root hash will be emitted to stdout")
+			logger.Info("no DNS provider configured; audit root hash will be emitted to stdout", "pkg", "dnstxt")
 			p := dnstxt.New(cfg.Node.NodeID, cfg.Node.ApplicableLaw, cfg.Policy.Audit.DNSTXTInterval, os.Stdout)
 			go p.Run(ctx, auditLog.RootHash)
 		}
@@ -130,14 +132,14 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		watcher := hotreload.New()
 		go watcher.Watch(ctx, configPath, func(newCfg config.Config) {
 			if newCfg.Node.PolicyVersion == lastVersion {
-				log.Printf("[hotreload] warning: policy_version unchanged (%s) — update policy_version when changing policy", lastVersion)
+				logger.Warn("policy_version unchanged — update policy_version when changing policy", "pkg", "hotreload", "version", lastVersion)
 			}
 			if err := engine.Reload(newCfg); err != nil {
-				log.Printf("[hotreload] rejected invalid config: %v", err)
+				logger.Error("rejected invalid config", "pkg", "hotreload", "err", err)
 				return
 			}
 			lastVersion = newCfg.Node.PolicyVersion
-			log.Printf("[hotreload] policy reloaded: version %s", newCfg.Node.PolicyVersion)
+			logger.Info("policy reloaded", "pkg", "hotreload", "version", newCfg.Node.PolicyVersion)
 		})
 	}
 
@@ -147,7 +149,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	var tc *transit.Cache
 	if cfg.Profile.TransitCacheTTL > 0 {
 		tc = transit.New(cfg.Profile.TransitCacheTTL)
-		log.Printf("[transit] cache enabled (TTL %s)", cfg.Profile.TransitCacheTTL)
+		logger.Info("cache enabled", "pkg", "transit", "ttl", cfg.Profile.TransitCacheTTL)
 		go runTransitRetry(ctx, tc, dlq, auditLog, cfg)
 	}
 
@@ -175,9 +177,9 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		mux.Handle("/metrics", metricsReg.Handler())
 		metricsSrv := &http.Server{Addr: cfg.Network.MetricsAddr, Handler: mux}
 		go func() {
-			log.Printf("[metrics] serving /metrics on %s", cfg.Network.MetricsAddr)
+			logger.Info("serving /metrics", "pkg", "metrics", "addr", cfg.Network.MetricsAddr)
 			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				log.Printf("[metrics] server error: %v", err)
+				logger.Error("server error", "pkg", "metrics", "err", err)
 			}
 		}()
 		go func() {
@@ -412,7 +414,7 @@ func runPeerGossip(ctx context.Context, cfg config.Config, reg *peerdiscovery.Re
 		defer cancel()
 		client, err := grpctransport.Dial(dialCtx, addr, clientTLS)
 		if err != nil {
-			log.Printf("[gossip] dial %s: %v", addr, err)
+			logger.Error("dial failed", "pkg", "gossip", "addr", addr, "err", err)
 			return
 		}
 		defer client.Close()
@@ -433,7 +435,7 @@ func runPeerGossip(ctx context.Context, cfg config.Config, reg *peerdiscovery.Re
 			KnownPeers:   peers,
 		})
 		if err != nil {
-			log.Printf("[gossip] exchange peers %s: %v", addr, err)
+			logger.Error("exchange peers failed", "pkg", "gossip", "addr", addr, "err", err)
 			return
 		}
 		for _, p := range resp.Peers {
@@ -522,7 +524,7 @@ func runGossip(ctx context.Context, cfg config.Config, auditLog *audit.Log, clie
 				client, err := grpctransport.Dial(dialCtx, peer.Addr, clientTLS)
 				cancel()
 				if err != nil {
-					log.Printf("[gossip] dial %s: %v", peer.Addr, err)
+					logger.Error("dial failed", "pkg", "gossip", "addr", peer.Addr, "err", err)
 					continue
 				}
 				_, _ = client.ShareRootHash(ctx, &grpctransport.RootHashMessage{

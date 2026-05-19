@@ -74,6 +74,8 @@ type NodeConfig struct {
 	ApplicableLaw       string
 	SignedBy            string
 	DiscoveryTokenTTL   time.Duration // TTL for opaque tokens issued during BroadcastDiscovery; default 5m
+	LogLevel            string        // "debug" | "info" | "warn" | "error"; default "info"
+	LogFormat           string        // "json" | "text"; default "text"
 }
 
 type ProfileConfig struct {
@@ -270,6 +272,8 @@ type rawTOML struct {
 		ApplicableLaw         string   `toml:"applicable_law"`
 		SignedBy              string   `toml:"signed_by"`
 		DiscoveryTokenTTLS    int      `toml:"discovery_token_ttl_s"`
+		LogLevel              string   `toml:"log_level"`
+		LogFormat             string   `toml:"log_format"`
 	} `toml:"node"`
 
 	Profile struct {
@@ -405,6 +409,12 @@ func (r rawTOML) apply(cfg *Config) {
 	}
 	if r.Node.DiscoveryTokenTTLS > 0 {
 		cfg.Node.DiscoveryTokenTTL = time.Duration(r.Node.DiscoveryTokenTTLS) * time.Second
+	}
+	if v := strings.TrimSpace(r.Node.LogLevel); v != "" {
+		cfg.Node.LogLevel = v
+	}
+	if v := strings.TrimSpace(r.Node.LogFormat); v != "" {
+		cfg.Node.LogFormat = v
 	}
 
 	cfg.Profile.Name = r.profileName()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +12,7 @@ import (
 
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/connect"
+	"MRMI_Gateway/internal/logger"
 	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/discovery"
 	"MRMI_Gateway/internal/identity"
@@ -92,7 +92,7 @@ func NewAdapterWithDiscovery(gw *core.Gateway, verifyKey ed25519.PublicKey, peer
 func (a *gatewayAdapter) SendEnvelope(ctx context.Context, req *SendEnvelopeRequest) (*SendEnvelopeResponse, error) {
 	if req.Envelope.SequenceNumber > 0 {
 		if err := a.seqRecv.Validate(req.Envelope.SenderRegion, req.Envelope.SequenceNumber); err != nil {
-			log.Printf("[session] %v", err)
+			logger.Warn("sequence validation", "pkg", "session", "err", err)
 		}
 	}
 
@@ -236,7 +236,7 @@ func (a *gatewayAdapter) BroadcastDiscovery(ctx context.Context, req *DiscoveryR
 			}
 			tok, err := a.tokenStore.Issue(appID, req.OriginNodeID, ttl)
 			if err != nil {
-				log.Printf("[discovery] issue token: %v", err)
+				logger.Error("issue token failed", "pkg", "discovery", "err", err)
 				continue
 			}
 			expires := time.Now().Add(ttl).UnixMilli()

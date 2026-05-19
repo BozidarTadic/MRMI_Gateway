@@ -8,12 +8,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/core"
+	"MRMI_Gateway/internal/logger"
 )
 
 // payload is the JSON body POSTed to the app webhook URL.
@@ -44,7 +44,7 @@ func (n *Notifier) NotifyAll(ctx context.Context, env core.Envelope) {
 		}
 		go func(id string, a config.AppConfig) {
 			if err := n.notify(ctx, id, a, env); err != nil {
-				log.Printf("[webhook] app %s: %v", id, err)
+				logger.Error("webhook delivery failed", "pkg", "webhook", "app", id, "err", err)
 			}
 		}(appID, app)
 	}

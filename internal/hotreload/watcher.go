@@ -2,11 +2,11 @@ package hotreload
 
 import (
 	"context"
-	"log"
 	"os"
 	"time"
 
 	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/logger"
 )
 
 type Watcher struct{}
@@ -43,7 +43,7 @@ func (w *Watcher) Watch(ctx context.Context, path string, onChange func(config.C
 
 			cfg, err := config.Load(path)
 			if err != nil {
-				log.Printf("[hotreload] config reload error: %v — keeping previous config", err)
+				logger.Error("config reload error — keeping previous config", "pkg", "hotreload", "err", err)
 				continue
 			}
 			onChange(cfg)

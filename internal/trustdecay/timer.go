@@ -2,9 +2,10 @@ package trustdecay
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
+
+	"MRMI_Gateway/internal/logger"
 )
 
 // Timer tracks the last cross-validation timestamp per peer node and reduces
@@ -63,7 +64,7 @@ func (t *Timer) Run(ctx context.Context) {
 			t.mu.RLock()
 			for peerID, last := range t.lastValidated {
 				if time.Since(last) > t.DecayWindow {
-					log.Printf("[trustdecay] peer %s has not been cross-validated in %s — effective trust tier reduced", peerID, t.DecayWindow)
+					logger.Warn("peer not cross-validated — effective trust tier reduced", "pkg", "trustdecay", "peer", peerID, "window", t.DecayWindow)
 				}
 			}
 			t.mu.RUnlock()
