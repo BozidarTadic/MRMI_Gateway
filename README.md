@@ -4,6 +4,10 @@
 
 # MRMI Gateway
 
+[![CI](https://github.com/BozidarTadic/MRMI_Gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/BozidarTadic/MRMI_Gateway/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](go.mod)
+
 **Multi-Regional Multi-App Interlock** — open-source federation middleware for regulated cross-border messaging corridors.
 
 MRMI Gateway sits between messaging applications and enforces legal-compliance constraints at the **transport layer** — not bolted on afterwards by operators. Think Apache Kafka for cross-border messaging infrastructure, with built-in policy enforcement, verifiable audit trails, and identity revocation.
