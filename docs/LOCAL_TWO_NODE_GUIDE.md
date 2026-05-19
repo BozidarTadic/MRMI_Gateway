@@ -406,6 +406,36 @@ dotnet run
 
 Configure node URLs in `appsettings.json` (defaults: RS `:8080`, RU `:8081`).
 
+### Offline and reconnect behavior
+
+The demo handles gateway outages without requiring a full browser reload.
+
+**When a gateway goes offline:**
+
+- The RS/RU status pills in the Chat page top bar change from green (`online`) to red (`offline`).
+- A red banner appears inside the affected node's chat panel with the last error message and the time the node was last seen.
+- If `retrying…` is shown, the streaming connection is actively trying to reconnect (every 3 s automatically).
+- Sending a message while a node is offline immediately logs an `ERROR` entry in the corridor log — the message text is not silently dropped.
+
+**When a gateway comes back online:**
+
+- The streaming connection reconnects automatically (within 3 s).
+- The offline banner disappears and the status pill turns green.
+- No page reload or manual action is required.
+
+**Manual probe:**
+
+Open the **Nodes** page. Each node has a **Probe** button that calls `/api/v1/status` directly, updating the live connection state and refreshing the node snapshot immediately — useful when you want to verify recovery without waiting for the next stream reconnect.
+
+**To test offline behavior locally:**
+
+1. Start both nodes with `scripts\demo-start.ps1`.
+2. Open the demo at `http://localhost:5294`.
+3. Kill one of the gateway processes (e.g., close the RS terminal).
+4. Within a few seconds the RS panel shows an offline banner.
+5. Send a message from RS — the corridor log shows `ERROR`.
+6. Restart the gateway process. The banner clears automatically.
+
 ## Run the full test suite
 
 ```bash

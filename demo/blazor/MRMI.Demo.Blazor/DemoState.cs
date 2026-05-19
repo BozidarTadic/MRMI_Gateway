@@ -23,8 +23,14 @@ public sealed class DemoState : IAsyncDisposable
     private readonly List<LogEntry> _log = [];
     private readonly object _lock = new();
 
-    public bool RsOnline { get; private set; }
-    public bool RuOnline { get; private set; }
+    public bool           RsOnline    { get; private set; }
+    public bool           RuOnline    { get; private set; }
+    public string?        RsLastError { get; private set; }
+    public string?        RuLastError { get; private set; }
+    public bool           RsRetrying  { get; private set; }
+    public bool           RuRetrying  { get; private set; }
+    public DateTimeOffset? RsLastSeen { get; private set; }
+    public DateTimeOffset? RuLastSeen { get; private set; }
 
     public event Action? OnChanged;
 
@@ -68,10 +74,12 @@ public sealed class DemoState : IAsyncDisposable
 
     private async Task StreamNode(MrmiClient client, string nodeRegion, CancellationToken ct)
     {
+        var isRs = nodeRegion == RsRegion;
         while (!ct.IsCancellationRequested)
         {
             try
             {
+                if (isRs) RsRetrying = false; else RuRetrying = false;
                 await foreach (var env in client.StreamAsync(ct))
                 {
                     var text = env.Payload?.Length > 0
@@ -98,21 +106,39 @@ public sealed class DemoState : IAsyncDisposable
                             _chats[key].Add(msg);
                     }
 
-                    if (nodeRegion == RsRegion) RsOnline = true;
-                    else RuOnline = true;
+                    if (isRs) { RsOnline = true; RsLastSeen = DateTimeOffset.UtcNow; RsLastError = null; }
+                    else { RuOnline = true; RuLastSeen = DateTimeOffset.UtcNow; RuLastError = null; }
 
                     OnChanged?.Invoke();
                 }
             }
             catch (OperationCanceledException) { break; }
-            catch
+            catch (Exception ex)
             {
-                if (nodeRegion == RsRegion) RsOnline = false;
-                else RuOnline = false;
+                if (isRs) { RsOnline = false; RsLastError = ex.Message; RsRetrying = true; }
+                else { RuOnline = false; RuLastError = ex.Message; RuRetrying = true; }
                 OnChanged?.Invoke();
                 try { await Task.Delay(3000, ct); } catch (OperationCanceledException) { break; }
             }
         }
+    }
+
+    public async Task ProbeNodeAsync(string region)
+    {
+        var isRs = string.Equals(region, RsRegion, StringComparison.OrdinalIgnoreCase);
+        var client = isRs ? RsClient : RuClient;
+        try
+        {
+            await client.GetStatusAsync();
+            if (isRs) { RsOnline = true; RsLastSeen = DateTimeOffset.UtcNow; RsLastError = null; RsRetrying = false; }
+            else { RuOnline = true; RuLastSeen = DateTimeOffset.UtcNow; RuLastError = null; RuRetrying = false; }
+        }
+        catch (Exception ex)
+        {
+            if (isRs) { RsOnline = false; RsLastError = ex.Message; }
+            else { RuOnline = false; RuLastError = ex.Message; }
+        }
+        OnChanged?.Invoke();
     }
 
     private static (string? rsId, string? ruId) ParseChatKey(string? key)

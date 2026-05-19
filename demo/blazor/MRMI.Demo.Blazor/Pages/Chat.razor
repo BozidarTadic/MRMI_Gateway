@@ -50,6 +50,27 @@
             <!-- Panel body: chat list / chat view / new-chat picker -->
             <div class="panel-body">
 
+                @if (!State.RsOnline)
+                {
+                    <div class="offline-banner offline-banner-rs">
+                        <div class="offline-banner-head">
+                            <strong>RS node offline</strong>
+                            @if (State.RsRetrying)
+                            {
+                                <span class="badge bg-secondary ms-1">retrying…</span>
+                            }
+                            @if (State.RsLastSeen.HasValue)
+                            {
+                                <span class="offline-last-seen">last seen @State.RsLastSeen.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+                            }
+                        </div>
+                        @if (State.RsLastError is not null)
+                        {
+                            <div class="offline-banner-error">@State.RsLastError</div>
+                        }
+                    </div>
+                }
+
                 @if (_rsView == PanelView.List)
                 {
                     var rsChats = State.ChatList.Where(c => c.RsId == _rsUserId).ToList();
@@ -219,6 +240,27 @@
             </div>
 
             <div class="panel-body">
+
+                @if (!State.RuOnline)
+                {
+                    <div class="offline-banner offline-banner-ru">
+                        <div class="offline-banner-head">
+                            <strong>RU node offline</strong>
+                            @if (State.RuRetrying)
+                            {
+                                <span class="badge bg-secondary ms-1">retrying…</span>
+                            }
+                            @if (State.RuLastSeen.HasValue)
+                            {
+                                <span class="offline-last-seen">last seen @State.RuLastSeen.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+                            }
+                        </div>
+                        @if (State.RuLastError is not null)
+                        {
+                            <div class="offline-banner-error">@State.RuLastError</div>
+                        }
+                    </div>
+                }
 
                 @if (_ruView == PanelView.List)
                 {

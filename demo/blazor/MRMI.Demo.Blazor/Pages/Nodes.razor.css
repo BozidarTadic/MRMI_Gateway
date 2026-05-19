@@ -1,0 +1,32 @@
+.conn-status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.65rem;
+}
+
+.conn-card {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    background: #fff;
+    padding: 0.7rem 0.85rem;
+}
+
+.conn-card-offline {
+    border-color: #f1aeb5;
+    background: #fff8f8;
+}
+
+.conn-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.conn-error {
+    font-size: 0.72rem;
+    color: #dc3545;
+    margin-top: 0.35rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

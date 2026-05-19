@@ -15,6 +15,38 @@
         </button>
     </div>
 
+    <!-- ── Live connection status ──────────────────────────────────── -->
+    <div class="conn-status-grid">
+        @foreach (var cs in ConnectionStates())
+        {
+            <div class="conn-card @(cs.Online ? "" : "conn-card-offline")">
+                <div class="conn-card-head">
+                    <span class="node-pill @(cs.Online ? "node-online" : "node-offline")">@cs.Region node</span>
+                    @if (!cs.Online && cs.Retrying)
+                    {
+                        <span class="badge bg-secondary" style="font-size:0.68rem">retrying…</span>
+                    }
+                    <span class="ms-auto text-muted" style="font-size:0.7rem">
+                        @(cs.LastSeen.HasValue
+                            ? "seen " + cs.LastSeen.Value.ToLocalTime().ToString("HH:mm:ss")
+                            : "not yet seen")
+                    </span>
+                    <button class="btn btn-sm btn-outline-secondary" style="padding:0.1rem 0.5rem;font-size:0.72rem"
+                            @onclick="() => ProbeNode(cs.Region)" disabled="@_probing">
+                        @(_probing ? "…" : "Probe")
+                    </button>
+                </div>
+                @if (!cs.Online)
+                {
+                    <div class="conn-error">@(cs.LastError ?? "Stream disconnected — check the gateway process")</div>
+                    <div class="text-muted" style="font-size:0.7rem;margin-top:0.2rem">
+                        Reconnect is automatic every 3 s. Use "Probe" to check immediately.
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
     <div class="node-grid">
         @foreach (var node in _nodes)
         {
@@ -147,9 +179,18 @@
 </div>
 
 @code {
+    private record ConnState(string Region, bool Online, bool Retrying, string? LastError, DateTimeOffset? LastSeen);
+
+    private IEnumerable<ConnState> ConnectionStates() =>
+    [
+        new("RS", State.RsOnline, State.RsRetrying, State.RsLastError, State.RsLastSeen),
+        new("RU", State.RuOnline, State.RuRetrying, State.RuLastError, State.RuLastSeen),
+    ];
+
     private IReadOnlyList<NodeSnapshot> _nodes = [];
     private ScenarioResult? _scenarioResult;
     private bool _loading;
+    private bool _probing;
     private bool _scenarioRunning;
     private string _scenarioName = "";
     private string _scenarioSlug = "";
@@ -171,6 +212,14 @@
         _loading = true;
         _nodes = await State.LoadNodeSnapshotsAsync();
         _loading = false;
+    }
+
+    private async Task ProbeNode(string region)
+    {
+        _probing = true;
+        await State.ProbeNodeAsync(region);
+        _nodes = await State.LoadNodeSnapshotsAsync();
+        _probing = false;
     }
 
     private async Task RunScenario(DemoScenario scenario)
