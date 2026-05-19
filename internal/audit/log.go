@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/store"
 )
 
 type Decision string
@@ -45,6 +46,7 @@ type Log struct {
 	mu      sync.RWMutex
 	entries []Entry
 	root    string
+	backend store.NodeStore
 }
 
 func New() *Log {
@@ -53,10 +55,16 @@ func New() *Log {
 	}
 }
 
+// SetStore wires a persistent backend. When set, Append writes to the store
+// and Recent prefers store entries (surviving restarts) over in-memory ones.
+func (l *Log) SetStore(s store.NodeStore) {
+	l.mu.Lock()
+	l.backend = s
+	l.mu.Unlock()
+}
+
 func (l *Log) Append(cfg config.Config, decision Decision, reason string, trustTier uint32, senderRegion, recipientRegion string) Entry {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-
 	prevHash := l.root
 	entry := Entry{
 		Seq:             uint64(len(l.entries) + 1),
@@ -76,10 +84,14 @@ func (l *Log) Append(cfg config.Config, decision Decision, reason string, trustT
 		PreviousHash:    prevHash,
 	}
 	entry.EntryHash = hashEntry(entry)
-
 	l.entries = append(l.entries, entry)
 	l.root = entry.EntryHash
+	backend := l.backend
+	l.mu.Unlock()
 
+	if backend != nil {
+		_ = backend.AuditAppend(toStoreEntry(entry))
+	}
 	return entry
 }
 
@@ -100,11 +112,25 @@ func (l *Log) Entries() []Entry {
 }
 
 // Recent returns the last n entries in reverse chronological order (newest first).
-// If the log has fewer than n entries all entries are returned.
+// When a store backend is set it is preferred (entries survive restarts);
+// falls back to the in-memory chain if the store returns an error or is empty.
 func (l *Log) Recent(n int) []Entry {
 	l.mu.RLock()
-	defer l.mu.RUnlock()
+	backend := l.backend
+	l.mu.RUnlock()
 
+	if backend != nil {
+		if storeEntries, err := backend.AuditLatest(n); err == nil && len(storeEntries) > 0 {
+			out := make([]Entry, len(storeEntries))
+			for i, e := range storeEntries {
+				out[i] = fromStoreEntry(e)
+			}
+			return out
+		}
+	}
+
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	total := len(l.entries)
 	if n <= 0 || total == 0 {
 		return nil
@@ -230,6 +256,34 @@ func hashEntry(entry Entry) string {
 	raw, _ := json.Marshal(payload)
 	sum := sha256.Sum256(raw)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func toStoreEntry(e Entry) store.AuditEntry {
+	return store.AuditEntry{
+		Seq:             e.Seq,
+		TimestampUnixMS: e.Timestamp,
+		Decision:        string(e.Decision),
+		SenderRegion:    e.SenderRegion,
+		RecipientRegion: e.RecipientRegion,
+		PolicyVersion:   e.PolicyVersion,
+		Profile:         e.Profile,
+		ApplicableLaw:   e.ApplicableLaw,
+		Reason:          e.Reason,
+	}
+}
+
+func fromStoreEntry(e store.AuditEntry) Entry {
+	return Entry{
+		Seq:             e.Seq,
+		Timestamp:       e.TimestampUnixMS,
+		Decision:        Decision(e.Decision),
+		SenderRegion:    e.SenderRegion,
+		RecipientRegion: e.RecipientRegion,
+		PolicyVersion:   e.PolicyVersion,
+		Profile:         e.Profile,
+		ApplicableLaw:   e.ApplicableLaw,
+		Reason:          e.Reason,
+	}
 }
 
 func zeroHash() string {

@@ -29,6 +29,7 @@ import (
 	"MRMI_Gateway/internal/registry"
 	"MRMI_Gateway/internal/server"
 	"MRMI_Gateway/internal/session"
+	"MRMI_Gateway/internal/store"
 	storebb "MRMI_Gateway/internal/store/bbolt"
 	storeredis "MRMI_Gateway/internal/store/redis"
 	"MRMI_Gateway/internal/ratelimit"
@@ -53,6 +54,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	logger.Warn("using ephemeral Ed25519 signing key — set signing_key in [tls] for a persistent key", "pkg", "identity")
 
 	// Persistent store: bbolt, Redis, or nil (in-memory fallback).
+	var nodeStore store.NodeStore
 	switch cfg.Storage.Backend {
 	case "bbolt":
 		dir := cfg.Storage.Path
@@ -65,7 +67,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		}
 		defer s.Close()
 		logger.Info("bbolt backend", "pkg", "store", "path", dir+"/mrmi.db")
-		_ = s // store integration wired via NodeStore interface (future: inject into dedup/DLQ/CRL)
+		nodeStore = s
 	case "redis":
 		prefix := cfg.Storage.KeyPrefix
 		if prefix == "" {
@@ -77,7 +79,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		}
 		defer s.Close()
 		logger.Info("redis backend", "pkg", "store", "addr", cfg.Storage.RedisURL, "prefix", prefix)
-		_ = s
+		nodeStore = s
 	default:
 		logger.Info("using in-memory storage (no persistence)", "pkg", "store")
 	}
@@ -100,6 +102,9 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	}
 
 	auditLog := audit.New()
+	if nodeStore != nil {
+		auditLog.SetStore(nodeStore)
+	}
 	crlStore := crl.New()
 	engine, err := policy.NewEngine(cfg, auditLog, crlStore)
 	if err != nil {
