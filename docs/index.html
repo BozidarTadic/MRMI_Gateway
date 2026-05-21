@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MRMI Gateway — Cross-Border Compliance Middleware</title>
+  <meta name="description" content="Open-source federation middleware that enforces legal-compliance constraints at the transport layer for regulated cross-border messaging corridors.">
+  <meta property="og:title" content="MRMI Gateway">
+  <meta property="og:description" content="Compliance is architecture. Cross-border messaging infrastructure with policy enforcement, verifiable audit, and identity revocation built in.">
+  <meta property="og:type" content="website">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #090d13;
+      --surface:   #111820;
+      --surface2:  #1a2333;
+      --border:    #1e2d42;
+      --teal:      #00d4aa;
+      --teal-dim:  #00a882;
+      --amber:     #f59e0b;
+      --red:       #ef4444;
+      --blue:      #3b82f6;
+      --text:      #dde6f0;
+      --muted:     #7a94b0;
+      --code-bg:   #0c1520;
+      --radius:    10px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      font-size: 16px;
+    }
+
+    a { color: var(--teal); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2rem;
+      height: 58px;
+      background: rgba(9, 13, 19, 0.88);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: .7rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600; font-size: 1.05rem; color: var(--text);
+      letter-spacing: -.02em;
+    }
+    .nav-logo .tag {
+      background: var(--teal); color: #000;
+      font-size: .6rem; font-weight: 700; padding: 2px 6px;
+      border-radius: 4px; letter-spacing: .08em;
+    }
+    .nav-links { display: flex; align-items: center; gap: 1.4rem; font-size: .875rem; }
+    .nav-links a { color: var(--muted); transition: color .2s; }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+    .btn {
+      display: inline-flex; align-items: center; gap: .45rem;
+      padding: .45rem 1.1rem; border-radius: 6px;
+      font-size: .85rem; font-weight: 600; cursor: pointer; border: none;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn:hover { opacity: .88; transform: translateY(-1px); text-decoration: none; }
+    .btn-primary { background: var(--teal); color: #000; }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+
+    /* ── HERO ── */
+    .hero {
+      display: flex; flex-direction: column; align-items: center; text-align: center;
+      padding: 7rem 1.5rem 5rem;
+      background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,212,170,.12) 0%, transparent 70%);
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: .5rem;
+      background: rgba(0,212,170,.1); border: 1px solid rgba(0,212,170,.25);
+      color: var(--teal); font-size: .78rem; font-weight: 600;
+      padding: .3rem .9rem; border-radius: 999px; margin-bottom: 1.8rem;
+      letter-spacing: .04em;
+    }
+    .hero-badge::before { content: '●'; font-size: .55rem; }
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.8rem);
+      font-weight: 700; letter-spacing: -.04em; line-height: 1.12;
+      max-width: 780px;
+    }
+    .hero h1 .grad {
+      background: linear-gradient(135deg, var(--teal) 0%, #00a8ff 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      margin-top: 1.4rem; max-width: 600px;
+      font-size: clamp(1rem, 2vw, 1.15rem); color: var(--muted); font-weight: 400;
+    }
+    .hero-ctas { display: flex; gap: 1rem; margin-top: 2.2rem; flex-wrap: wrap; justify-content: center; }
+    .hero-badges { display: flex; gap: .6rem; margin-top: 2.8rem; flex-wrap: wrap; justify-content: center; }
+    .hero-badges img { height: 20px; border-radius: 3px; }
+    .quote-bar {
+      margin-top: 3.5rem; padding: 1.1rem 2rem;
+      border-left: 3px solid var(--teal);
+      background: rgba(0,212,170,.05);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      max-width: 680px; text-align: left;
+      font-style: italic; color: var(--muted); font-size: .95rem;
+    }
+    .quote-bar strong { color: var(--text); font-style: normal; }
+
+    /* ── SECTION WRAPPER ── */
+    .section { padding: 5rem 1.5rem; }
+    .section-inner { max-width: 1080px; margin: 0 auto; }
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .72rem; font-weight: 600; letter-spacing: .14em;
+      color: var(--teal); text-transform: uppercase; margin-bottom: .75rem;
+    }
+    .section-title {
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: 700; letter-spacing: -.03em; line-height: 1.2;
+      margin-bottom: .75rem;
+    }
+    .section-sub { color: var(--muted); max-width: 580px; font-size: .97rem; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+    /* ── PROBLEM ── */
+    .problem-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.2rem; margin-top: 2.5rem; }
+    .problem-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.5rem;
+    }
+    .law-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .78rem; font-weight: 600; padding: .25rem .65rem;
+      border-radius: 4px; display: inline-block; margin-bottom: .8rem;
+    }
+    .law-tag.ru { background: rgba(239,68,68,.15); color: #f87171; }
+    .law-tag.eu { background: rgba(59,130,246,.15); color: #60a5fa; }
+    .law-tag.kz { background: rgba(245,158,11,.15); color: #fbbf24; }
+    .problem-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: .4rem; }
+    .problem-card p { font-size: .875rem; color: var(--muted); }
+    .problem-footer {
+      margin-top: 2rem; padding: 1.2rem 1.5rem;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); font-size: .92rem; color: var(--muted);
+    }
+    .problem-footer strong { color: var(--text); }
+
+    /* ── FLOW DIAGRAM ── */
+    .flow { margin-top: 2.8rem; }
+    .flow-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 0; flex-wrap: wrap; row-gap: 1rem;
+    }
+    .flow-node {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.1rem 1.4rem; text-align: center;
+      min-width: 145px;
+    }
+    .flow-node .label { font-size: .72rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-bottom: .3rem; }
+    .flow-node .name { font-weight: 600; font-size: .95rem; }
+    .flow-node.gateway { border-color: var(--teal); }
+    .flow-node.gateway .name { color: var(--teal); }
+    .flow-arrow {
+      display: flex; flex-direction: column; align-items: center; padding: 0 .6rem;
+      font-size: .68rem; color: var(--muted); font-family: 'JetBrains Mono', monospace;
+      text-align: center; gap: .2rem;
+    }
+    .flow-arrow .line { font-size: 1.1rem; letter-spacing: -.1em; color: var(--border); }
+    .flow-pillars {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: .9rem; margin-top: 2rem;
+    }
+    .pillar {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1rem 1.2rem;
+      display: flex; align-items: flex-start; gap: .75rem;
+    }
+    .pillar-icon { font-size: 1.3rem; line-height: 1; padding-top: .1rem; }
+    .pillar h4 { font-size: .875rem; font-weight: 600; margin-bottom: .2rem; }
+    .pillar p { font-size: .8rem; color: var(--muted); }
+
+    /* ── FEATURES ── */
+    .features { background: var(--surface); }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.2rem; margin-top: 2.5rem; }
+    .feature-card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.5rem;
+      transition: border-color .2s;
+    }
+    .feature-card:hover { border-color: rgba(0,212,170,.35); }
+    .feature-icon { font-size: 1.5rem; margin-bottom: .8rem; }
+    .feature-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: .5rem; }
+    .feature-card p { font-size: .875rem; color: var(--muted); }
+    .feature-card code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .78rem; background: var(--code-bg);
+      padding: .15rem .4rem; border-radius: 4px; color: var(--teal);
+    }
+
+    /* ── CORRIDORS ── */
+    .corridors-grid { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 2.5rem; align-items: flex-start; }
+    .corridor-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.2rem 1.5rem;
+      display: flex; align-items: center; gap: 1rem; min-width: 200px;
+    }
+    .corridor-flag { font-size: 2rem; line-height: 1; }
+    .corridor-code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .85rem; font-weight: 600; color: var(--teal);
+      margin-bottom: .15rem;
+    }
+    .corridor-name { font-size: .82rem; color: var(--muted); }
+    .corridor-future {
+      background: var(--surface2); border: 1px dashed var(--border);
+      border-radius: var(--radius); padding: 1.2rem 1.5rem;
+      display: flex; align-items: center; gap: 1rem; min-width: 200px;
+      opacity: .55;
+    }
+    .corridor-future .corridor-code { color: var(--muted); }
+
+    /* ── PROFILES ── */
+    .profiles-table {
+      margin-top: 2rem; width: 100%; border-collapse: collapse;
+      font-size: .9rem;
+    }
+    .profiles-table th {
+      text-align: left; padding: .75rem 1rem;
+      background: var(--surface); border: 1px solid var(--border);
+      font-weight: 600; font-size: .8rem; letter-spacing: .04em;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .profiles-table td {
+      padding: .8rem 1rem; border: 1px solid var(--border);
+      font-size: .875rem;
+    }
+    .profiles-table tr:nth-child(even) td { background: var(--surface); }
+    .profile-badge {
+      display: inline-block; font-family: 'JetBrains Mono', monospace;
+      font-size: .78rem; font-weight: 600; padding: .2rem .6rem; border-radius: 4px;
+    }
+    .profile-badge.strict  { background: rgba(239,68,68,.15);  color: #f87171; }
+    .profile-badge.balanced { background: rgba(59,130,246,.15); color: #60a5fa; }
+    .profile-badge.perf     { background: rgba(16,185,129,.15); color: #34d399; }
+
+    /* ── QUICKSTART ── */
+    .quickstart { background: var(--surface); }
+    .code-block {
+      margin-top: 1.5rem; background: var(--code-bg);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .code-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .6rem 1rem; background: rgba(255,255,255,.03);
+      border-bottom: 1px solid var(--border); font-size: .75rem;
+      font-family: 'JetBrains Mono', monospace; color: var(--muted);
+    }
+    .code-dots { display: flex; gap: 5px; }
+    .code-dots span { width: 10px; height: 10px; border-radius: 50%; }
+    .code-dots .r { background: #f47067; }
+    .code-dots .y { background: #f5a623; }
+    .code-dots .g { background: #27c93f; }
+    .code-body {
+      padding: 1.2rem 1.4rem;
+      font-family: 'JetBrains Mono', monospace; font-size: .85rem;
+      line-height: 1.8; overflow-x: auto;
+    }
+    .code-body .comment { color: #4a5f78; }
+    .code-body .cmd { color: var(--teal); }
+    .code-body .str { color: #e6af55; }
+    .code-body .kw { color: #c792ea; }
+    .quickstart-steps {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem; margin-top: 2rem;
+    }
+    .step {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.2rem;
+    }
+    .step-num {
+      font-family: 'JetBrains Mono', monospace; font-size: .72rem;
+      color: var(--teal); font-weight: 700; margin-bottom: .5rem;
+    }
+    .step h4 { font-size: .9rem; font-weight: 600; margin-bottom: .3rem; }
+    .step p { font-size: .82rem; color: var(--muted); }
+    .step code {
+      font-family: 'JetBrains Mono', monospace; font-size: .78rem;
+      background: var(--code-bg); padding: .15rem .4rem;
+      border-radius: 4px; color: var(--teal);
+    }
+
+    /* ── SDKs ── */
+    .sdk-grid { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 2rem; }
+    .sdk-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.2rem 1.5rem;
+      display: flex; align-items: center; gap: 1rem; min-width: 180px;
+    }
+    .sdk-icon { font-size: 1.6rem; }
+    .sdk-name { font-weight: 600; font-size: .9rem; margin-bottom: .15rem; }
+    .sdk-status { font-size: .75rem; font-family: 'JetBrains Mono', monospace; }
+    .sdk-status.ready { color: #34d399; }
+    .sdk-status.wip { color: var(--amber); }
+
+    /* ── REPO LAYOUT ── */
+    .repo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .7rem; margin-top: 1.5rem; }
+    .repo-item {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: .75rem 1rem;
+    }
+    .repo-item .path { font-family: 'JetBrains Mono', monospace; font-size: .78rem; color: var(--teal); margin-bottom: .25rem; }
+    .repo-item .desc { font-size: .78rem; color: var(--muted); }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2.5rem 1.5rem; background: var(--bg);
+    }
+    .footer-inner {
+      max-width: 1080px; margin: 0 auto;
+      display: flex; flex-wrap: wrap; gap: 2rem;
+      justify-content: space-between; align-items: flex-start;
+    }
+    .footer-brand .brand-name {
+      font-family: 'JetBrains Mono', monospace; font-weight: 700;
+      font-size: 1.1rem; margin-bottom: .4rem;
+    }
+    .footer-brand p { font-size: .82rem; color: var(--muted); max-width: 300px; }
+    .footer-links { display: flex; gap: 3rem; flex-wrap: wrap; }
+    .footer-col h5 { font-size: .8rem; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-bottom: .75rem; }
+    .footer-col a { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .4rem; transition: color .2s; }
+    .footer-col a:hover { color: var(--text); text-decoration: none; }
+    .footer-bottom {
+      max-width: 1080px; margin: 2rem auto 0;
+      padding-top: 1.5rem; border-top: 1px solid var(--border);
+      display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between;
+      font-size: .8rem; color: var(--muted);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 640px) {
+      nav { padding: 0 1rem; }
+      .nav-links .hide-sm { display: none; }
+      .hero { padding: 4rem 1rem 3rem; }
+      .section { padding: 3.5rem 1rem; }
+      .flow-row { flex-direction: column; }
+      .flow-arrow .line { transform: rotate(90deg); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">
+    <span>MRMI Gateway</span>
+    <span class="tag">v0.5</span>
+  </div>
+  <div class="nav-links">
+    <a href="#how-it-works" class="hide-sm">How It Works</a>
+    <a href="#features" class="hide-sm">Features</a>
+    <a href="#quickstart" class="hide-sm">Quick Start</a>
+    <a href="MRMI_Gateway_ADR_v0_8.md" class="hide-sm">ADR</a>
+    <a href="https://github.com/BozidarTadic/MRMI_Gateway" class="btn btn-ghost" target="_blank" rel="noopener">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.268 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.026 2.747-1.026.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
+      GitHub
+    </a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-badge">Open Source · MIT License · v0.5</div>
+  <h1>Compliance is <span class="grad">Architecture.</span></h1>
+  <p>
+    MRMI Gateway is federation middleware that enforces cross-border data sovereignty
+    at the transport layer — before your operators can accidentally disable it.
+  </p>
+  <div class="hero-ctas">
+    <a href="https://github.com/BozidarTadic/MRMI_Gateway" class="btn btn-primary" target="_blank" rel="noopener">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.268 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.026 2.747-1.026.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
+      View on GitHub
+    </a>
+    <a href="MRMI_Gateway_ADR_v0_8.md" class="btn btn-ghost">Read the ADR →</a>
+  </div>
+  <div class="hero-badges">
+    <img src="https://github.com/BozidarTadic/MRMI_Gateway/actions/workflows/ci.yml/badge.svg" alt="CI">
+    <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT">
+    <img src="https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go&logoColor=white" alt="Go">
+    <img src="https://img.shields.io/badge/status-v0.5_active-00d4aa" alt="Status">
+  </div>
+  <div class="quote-bar">
+    <strong>"Legal compliance is not a deployment concern —</strong> it is an architectural constraint enforced at the transport layer."
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- PROBLEM -->
+<section class="section" id="problem">
+  <div class="section-inner">
+    <div class="section-label">// the problem</div>
+    <h2 class="section-title">A fragmented regulatory landscape</h2>
+    <p class="section-sub">
+      Modern messaging apps operate across jurisdictions with conflicting data localisation rules.
+      Existing federated protocols treat compliance as an implementation concern — leaving operators to figure it out.
+    </p>
+    <div class="problem-grid">
+      <div class="problem-card">
+        <span class="law-tag ru">152-ФЗ · Russia</span>
+        <h3>Russian Data Localisation</h3>
+        <p>Personal data of Russian citizens must be stored on servers physically located in Russia. Cross-border transmission requires explicit consent and legal basis.</p>
+      </div>
+      <div class="problem-card">
+        <span class="law-tag eu">GDPR · EU</span>
+        <h3>General Data Protection</h3>
+        <p>Strict conditions on data transfers outside the EEA. Adequacy decisions, SCCs, and BCRs govern which destinations are permissible at all.</p>
+      </div>
+      <div class="problem-card">
+        <span class="law-tag kz">KZ · Kazakhstan</span>
+        <h3>Data Sovereignty Law</h3>
+        <p>Personal data collected from Kazakhstani residents must be processed on local servers. Cross-border flows require regulatory notification and approval.</p>
+      </div>
+    </div>
+    <div class="problem-footer">
+      <strong>Existing protocols (Matrix, XMPP) treat compliance as a deployment concern.</strong>
+      Operators configure it manually — and can misconfigure it. MRMI Gateway makes the correct behaviour the only behaviour, enforced cryptographically at the transport layer.
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- HOW IT WORKS -->
+<section class="section" id="how-it-works">
+  <div class="section-inner">
+    <div class="section-label">// architecture</div>
+    <h2 class="section-title">How it works</h2>
+    <p class="section-sub">
+      Each MRMI node runs a Go binary. Nodes communicate over gRPC with mutual TLS.
+      Every envelope is policy-checked, deduplicated, and appended to a Merkle audit chain.
+    </p>
+    <div class="flow">
+      <div class="flow-row">
+        <div class="flow-node">
+          <div class="label">Messaging App</div>
+          <div class="name">App A · RU</div>
+        </div>
+        <div class="flow-arrow">
+          <div class="line">────</div>
+          <div>SDK</div>
+        </div>
+        <div class="flow-node gateway">
+          <div class="label">MRMI Node</div>
+          <div class="name">Gateway · RU</div>
+        </div>
+        <div class="flow-arrow">
+          <div class="line">━━━━</div>
+          <div>gRPC / mTLS</div>
+        </div>
+        <div class="flow-node gateway">
+          <div class="label">MRMI Node</div>
+          <div class="name">Gateway · RS</div>
+        </div>
+        <div class="flow-arrow">
+          <div class="line">────</div>
+          <div>SDK</div>
+        </div>
+        <div class="flow-node">
+          <div class="label">Messaging App</div>
+          <div class="name">App B · RS</div>
+        </div>
+      </div>
+      <div class="flow-pillars">
+        <div class="pillar">
+          <div class="pillar-icon">🛡️</div>
+          <div>
+            <h4>Policy Engine</h4>
+            <p>Allow/deny by region, trust tier, and applicable law. Signed TOML — operators can't silently disable it.</p>
+          </div>
+        </div>
+        <div class="pillar">
+          <div class="pillar-icon">🔗</div>
+          <div>
+            <h4>Merkle Audit Log</h4>
+            <p>SHA-256 chained entries. Root hash published to DNS TXT and <code>/.well-known/mrmi-audit</code> for independent verification.</p>
+          </div>
+        </div>
+        <div class="pillar">
+          <div class="pillar-icon">🪪</div>
+          <div>
+            <h4>Identity Trust Tiers</h4>
+            <p>T0 (anonymous) → T3 (legal entity). Trust decays after 30 days without cross-validation. CRL gossip revokes in real time.</p>
+          </div>
+        </div>
+        <div class="pillar">
+          <div class="pillar-icon">📦</div>
+          <div>
+            <h4>At-Least-Once Delivery</h4>
+            <p>Idempotency key + dedup index + ACK/retry. Failed deliveries go to DLQ. Transit cache bridges short outages.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- FEATURES -->
+<section class="section features" id="features">
+  <div class="section-inner">
+    <div class="section-label">// capabilities</div>
+    <h2 class="section-title">Built-in, not bolted on</h2>
+    <p class="section-sub">
+      Every feature serves the core guarantee: regulated cross-border messaging that operators cannot accidentally misconfigure.
+    </p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🔏</div>
+        <h3>Signed Policy Configs</h3>
+        <p>TOML policy files are cryptographically signed. Fields like <code>applicable_law</code>, <code>allowed_regions</code>, and <code>min_trust_tier</code> are enforced — not advisory.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌐</div>
+        <h3>Federated Discovery</h3>
+        <p>Hop-limited gossip via <code>BroadcastDiscovery</code> RPC. <code>ExchangePeers</code> keeps the live peer table current. Rate-limited at 10 req/s, burst 20 per origin.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Prometheus Metrics</h3>
+        <p>Counters for allow/deny/duplicate/DLQ depth, transit cache, rate-limit denials, and peer count. Scraped from <code>/metrics</code>.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔄</div>
+        <h3>Hot Config Reload</h3>
+        <p>File watcher atomically reloads policy without downtime. No restart needed — peers see updated policy within one gossip cycle.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🕵️</div>
+        <h3>Traffic Analysis Resistance</h3>
+        <p>Configurable timing jitter and payload padding per compliance profile. <code>strict</code> applies maximum cover traffic; <code>performance</code> minimises overhead.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗄️</div>
+        <h3>Pluggable Persistence</h3>
+        <p>NodeStore interface with <code>bbolt</code> (embedded, single-node) and <code>redis</code> (clustered) backends. Audit entries survive restarts.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🛠️</div>
+        <h3>Operator CLI</h3>
+        <p>
+          <code>mrmi node status</code> / <code>peers</code> / <code>dlq</code> / <code>apps</code> — live node inspection.
+          <code>mrmi token issue</code> issues JWT tokens against a running node.
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔗</div>
+        <h3>Webhook Push</h3>
+        <p>HMAC-SHA256 signed push notifications to application webhooks on envelope delivery, policy denial, or CRL update events.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>mTLS Transport</h3>
+        <p>All inter-node gRPC traffic requires mutual TLS. Test certs are generated in-process via <code>internal/testcerts/</code> — nothing committed, nothing via openssl.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- CORRIDORS -->
+<section class="section" id="corridors">
+  <div class="section-inner">
+    <div class="section-label">// target corridors</div>
+    <h2 class="section-title">v0.1 primary corridors</h2>
+    <p class="section-sub">
+      Regions with similar data sovereignty concerns, existing commercial relationships,
+      and no current cross-border protocol enforcement.
+    </p>
+    <div class="corridors-grid">
+      <div class="corridor-card">
+        <div class="corridor-flag">🇷🇸</div>
+        <div>
+          <div class="corridor-code">RS · Serbia</div>
+          <div class="corridor-name">GDPR-aligned · Active</div>
+        </div>
+      </div>
+      <div class="corridor-card">
+        <div class="corridor-flag">🇷🇺</div>
+        <div>
+          <div class="corridor-code">RU · Russia</div>
+          <div class="corridor-name">152-ФЗ · Active</div>
+        </div>
+      </div>
+      <div class="corridor-card">
+        <div class="corridor-flag">🇧🇾</div>
+        <div>
+          <div class="corridor-code">BY · Belarus</div>
+          <div class="corridor-name">Data sovereignty · Active</div>
+        </div>
+      </div>
+      <div class="corridor-card">
+        <div class="corridor-flag">🇰🇿</div>
+        <div>
+          <div class="corridor-code">KZ · Kazakhstan</div>
+          <div class="corridor-name">Data localisation · Active</div>
+        </div>
+      </div>
+      <div class="corridor-card">
+        <div class="corridor-flag">🇦🇲</div>
+        <div>
+          <div class="corridor-code">AM · Armenia</div>
+          <div class="corridor-name">Data protection law · Active</div>
+        </div>
+      </div>
+      <div class="corridor-future">
+        <div class="corridor-flag">🇪🇺</div>
+        <div>
+          <div class="corridor-code">EU corridor</div>
+          <div class="corridor-name">Deferred → v1.0</div>
+        </div>
+      </div>
+      <div class="corridor-future">
+        <div class="corridor-flag">🇺🇸</div>
+        <div>
+          <div class="corridor-code">US corridor</div>
+          <div class="corridor-name">Deferred → v1.0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- PROFILES -->
+<section class="section" id="profiles">
+  <div class="section-inner">
+    <div class="section-label">// compliance profiles</div>
+    <h2 class="section-title">Three profiles, one command</h2>
+    <p class="section-sub">
+      Preset configurations map directly to regulatory frameworks. Set <code>profile =</code> in your TOML — the gateway does the rest.
+    </p>
+    <table class="profiles-table">
+      <thead>
+        <tr>
+          <th>Profile</th>
+          <th>Primary framework</th>
+          <th>Jitter</th>
+          <th>Padding</th>
+          <th>Dedup TTL</th>
+          <th>Transit cache TTL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="profile-badge strict">strict</span></td>
+          <td>152-ФЗ / high-risk corridors</td>
+          <td>100–500 ms</td>
+          <td>Max bucket</td>
+          <td>300 s</td>
+          <td>60 s</td>
+        </tr>
+        <tr>
+          <td><span class="profile-badge balanced">balanced</span></td>
+          <td>GDPR / standard corridors</td>
+          <td>20–120 ms</td>
+          <td>Medium bucket</td>
+          <td>120 s</td>
+          <td>60 s</td>
+        </tr>
+        <tr>
+          <td><span class="profile-badge perf">performance</span></td>
+          <td>Kazakhstan / low-latency</td>
+          <td>0–10 ms</td>
+          <td>Minimal</td>
+          <td>60 s</td>
+          <td>30 s</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- QUICKSTART -->
+<section class="section quickstart" id="quickstart">
+  <div class="section-inner">
+    <div class="section-label">// quick start</div>
+    <h2 class="section-title">Up in 60 seconds</h2>
+    <p class="section-sub">Prerequisites: Go 1.21+, <code>protoc</code> + <code>protoc-gen-go</code> + <code>protoc-gen-go-grpc</code></p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+        <span>bash</span>
+      </div>
+      <div class="code-body">
+<span class="comment"># Clone and run with the balanced compliance profile</span>
+<span class="cmd">git clone</span> https://github.com/BozidarTadic/MRMI_Gateway
+<span class="cmd">cd</span> MRMI_Gateway
+<span class="cmd">go run</span> ./cmd/mrmi-gateway -config configs/node.balanced.toml
+
+<span class="comment"># Verify the node is healthy</span>
+<span class="cmd">curl</span> http://localhost:8080/healthz
+<span class="cmd">curl</span> http://localhost:8080/.well-known/mrmi-audit
+
+<span class="comment"># Run the full test suite</span>
+<span class="cmd">go test</span> ./...
+      </div>
+    </div>
+
+    <div class="quickstart-steps">
+      <div class="step">
+        <div class="step-num">STEP 01</div>
+        <h4>Single node</h4>
+        <p>Use <code>configs/node.balanced.toml</code> to spin up a standalone RS node on <code>:8080</code> (HTTP) and <code>:7777</code> (gRPC).</p>
+      </div>
+      <div class="step">
+        <div class="step-num">STEP 02</div>
+        <h4>Two-node corridor</h4>
+        <p>Follow <a href="LOCAL_TWO_NODE_GUIDE.md">LOCAL_TWO_NODE_GUIDE.md</a> to run RS + RU nodes locally and test cross-border envelope delivery.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">STEP 03</div>
+        <h4>Blazor demo</h4>
+        <p>On Windows: <code>scripts\demo-start.ps1</code> — starts RS gateway, RU gateway, and the split-screen Blazor UI at <code>:5294</code>.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">STEP 04</div>
+        <h4>Seed node</h4>
+        <p>See <a href="SEED_NODE_GUIDE.md">SEED_NODE_GUIDE.md</a> to join the federated network as a seed node with persistent peer tables.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- SDKs -->
+<section class="section" id="sdks">
+  <div class="section-inner">
+    <div class="section-label">// sdk support</div>
+    <h2 class="section-title">Integrate from any stack</h2>
+    <p class="section-sub">Official SDKs wrap the gRPC transport — drop them in like any messaging library.</p>
+    <div class="sdk-grid">
+      <div class="sdk-card">
+        <div class="sdk-icon">🐹</div>
+        <div>
+          <div class="sdk-name">Go</div>
+          <div class="sdk-status ready">● v0.5 — reference</div>
+        </div>
+      </div>
+      <div class="sdk-card">
+        <div class="sdk-icon">🟣</div>
+        <div>
+          <div class="sdk-name">.NET / C#</div>
+          <div class="sdk-status ready">● v0.1 — NuGet</div>
+        </div>
+      </div>
+      <div class="sdk-card">
+        <div class="sdk-icon">🐍</div>
+        <div>
+          <div class="sdk-name">Python</div>
+          <div class="sdk-status ready">● v0.1 — PyPI</div>
+        </div>
+      </div>
+      <div class="sdk-card">
+        <div class="sdk-icon">☕</div>
+        <div>
+          <div class="sdk-name">Java / Kotlin</div>
+          <div class="sdk-status wip">◌ v0.2 — planned</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- LAYOUT -->
+<section class="section" id="layout">
+  <div class="section-inner">
+    <div class="section-label">// repository layout</div>
+    <h2 class="section-title">Strict layered architecture</h2>
+    <p class="section-sub">
+      Dependency flow: <code>cmd/</code> → <code>internal/app</code> → <code>internal/core</code> → <code>internal/{domain}</code>.
+      Business logic lives only in core — never in transport or HTTP.
+    </p>
+    <div class="repo-grid">
+      <div class="repo-item"><div class="path">cmd/mrmi-gateway/</div><div class="desc">Node process entrypoint</div></div>
+      <div class="repo-item"><div class="path">cmd/mrmi/</div><div class="desc">Operator CLI — keygen, audit verify, token issue</div></div>
+      <div class="repo-item"><div class="path">internal/core/</div><div class="desc">Domain types: Gateway, Envelope, Decision</div></div>
+      <div class="repo-item"><div class="path">internal/policy/</div><div class="desc">Policy engine — region allow/deny, trust tier</div></div>
+      <div class="repo-item"><div class="path">internal/audit/</div><div class="desc">Merkle chain log — SHA-256, Verify, RootHash</div></div>
+      <div class="repo-item"><div class="path">internal/transport/grpc/</div><div class="desc">gRPC server, client, proto↔core adapter</div></div>
+      <div class="repo-item"><div class="path">internal/server/</div><div class="desc">HTTP REST + SSE + embedded dashboard SPA</div></div>
+      <div class="repo-item"><div class="path">internal/delivery/</div><div class="desc">Forwarder, retry backoff, DLQ</div></div>
+      <div class="repo-item"><div class="path">internal/identity/</div><div class="desc">Ed25519 keygen, envelope sign/verify</div></div>
+      <div class="repo-item"><div class="path">internal/store/</div><div class="desc">NodeStore interface — bbolt + redis backends</div></div>
+      <div class="repo-item"><div class="path">proto/mrmi/v1/</div><div class="desc">Protobuf contracts — source of truth</div></div>
+      <div class="repo-item"><div class="path">sdk/dotnet/ · sdk/python/</div><div class="desc">.NET 10 NuGet + Python PyPI packages</div></div>
+      <div class="repo-item"><div class="path">demo/blazor/</div><div class="desc">Split-screen RS/RU Blazor Server demo</div></div>
+      <div class="repo-item"><div class="path">test/acceptance/</div><div class="desc">End-to-end REST API acceptance tests</div></div>
+      <div class="repo-item"><div class="path">configs/</div><div class="desc">Operator TOML — strict, balanced, performance</div></div>
+      <div class="repo-item"><div class="path">docs/</div><div class="desc">ADR v0.5 + operator guides</div></div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="brand-name">MRMI Gateway</div>
+      <p>Open-source federation middleware for regulated cross-border messaging corridors. MIT licensed.</p>
+    </div>
+    <div class="footer-links">
+      <div class="footer-col">
+        <h5>Project</h5>
+        <a href="https://github.com/BozidarTadic/MRMI_Gateway" target="_blank" rel="noopener">GitHub Repository</a>
+        <a href="https://github.com/BozidarTadic/MRMI_Gateway/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/BozidarTadic/MRMI_Gateway/projects" target="_blank" rel="noopener">Roadmap</a>
+        <a href="https://github.com/BozidarTadic/MRMI_Gateway/releases" target="_blank" rel="noopener">Releases</a>
+      </div>
+      <div class="footer-col">
+        <h5>Documentation</h5>
+        <a href="MRMI_Gateway_ADR_v0_8.md">Architecture ADR v0.5</a>
+        <a href="LOCAL_TWO_NODE_GUIDE.md">Local Two-Node Guide</a>
+        <a href="SEED_NODE_GUIDE.md">Seed Node Guide</a>
+        <a href="ALLIANCE_NODE_GUIDE.md">Alliance Node Guide</a>
+        <a href="CONTRIBUTING.md">Contributing</a>
+      </div>
+      <div class="footer-col">
+        <h5>Sprints</h5>
+        <a href="SPRINT_11_PLAN.md">Sprint 11 (current)</a>
+        <a href="SPRINT_10_PLAN.md">Sprint 10 — v0.5</a>
+        <a href="SPRINT_6_PLAN.md">Sprint 6 — v0.3</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>Copyright © 2025 Božidar Tadić · MIT License</span>
+    <span>Multi-Regional Multi-App Interlock</span>
+  </div>
+</footer>
+
+</body>
+</html>
