@@ -40,3 +40,8 @@ logs/
 *.pem
 *.key
 *.crt
+
+# Demo capture artifacts
+demo/capture-frames/
+demo/capture-video/
+demo/*.mp4
