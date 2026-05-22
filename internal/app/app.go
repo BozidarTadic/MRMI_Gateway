@@ -334,6 +334,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 			peers[k] = p.Addr
 		}
 		discoveryDedup := dedup.New(30 * time.Second)
+		go runPurge(ctx, discoveryDedup)
 		broadcaster = discovery.New(peers, discoveryDedup, func(dialCtx context.Context, addr string) (discovery.PeerClient, error) {
 			c, err := grpctransport.Dial(dialCtx, addr, clientTLS)
 			if err != nil {
@@ -397,18 +398,31 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Network.ShutdownTimeout)
+		logger.Info("shutting down", "pkg", "app")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout(cfg))
 		defer cancel()
 		if err := grpcServer.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
 		return httpServer.Shutdown(shutdownCtx)
 	case err := <-errCh:
+		// One server exited; shut down the other before returning.
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout(cfg))
+		defer cancel()
+		_ = grpcServer.Shutdown(shutdownCtx)
+		_ = httpServer.Shutdown(shutdownCtx)
 		if err == nil || errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
 		return err
 	}
+}
+
+func shutdownTimeout(cfg config.Config) time.Duration {
+	if cfg.Network.ShutdownTimeout > 0 {
+		return cfg.Network.ShutdownTimeout
+	}
+	return 5 * time.Second
 }
 
 func runPeerGossip(ctx context.Context, cfg config.Config, reg *peerdiscovery.Registry, clientTLS *tls.Config, interval time.Duration) {
