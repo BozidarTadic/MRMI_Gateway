@@ -1,8 +1,7 @@
 [node]
 node_id        = "global-relay-01"
 node_scope     = "global"
-region         = ""
-disclaimer     = "no-data-residency-claims"
+region         = "GLOBAL"  # required by validator; global nodes have no data-residency claim
 operator_id    = "global-ops"
 policy_version = "0.4.0"
 applicable_law = "NONE"

@@ -34,14 +34,13 @@ grpc_listen_addr = "0.0.0.0:7777"
 http_listen_addr = "0.0.0.0:8080"
 metrics_addr     = "0.0.0.0:9090"
 
-[network.peers]
-  [network.peers.RS]
-  addr       = "rs-seed.example.com:7777"
-  node_scope = "regional"
+[peers.RS]
+addr       = "rs-seed.example.com:7777"
+node_scope = "regional"
 
-  [network.peers.RU]
-  addr       = "ru-seed.example.com:7777"
-  node_scope = "regional"
+[peers.RU]
+addr       = "ru-seed.example.com:7777"
+node_scope = "regional"
 
 [tls]
 cert     = "/etc/mrmi/node.crt"

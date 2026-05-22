@@ -25,10 +25,9 @@ export_to_operator  = false
 dns_txt_publish     = false
 
 [network]
-listen_addr         = "0.0.0.0:7787"
-grpc_port           = 7787
-http_port           = 8080
-metrics_port        = 9092
+grpc_listen_addr = "0.0.0.0:7787"
+http_listen_addr = "0.0.0.0:8080"
+metrics_addr     = "0.0.0.0:9092"
 
 [tls]
 insecure = true

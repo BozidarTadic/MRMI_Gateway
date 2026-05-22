@@ -57,31 +57,27 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
 
-## Current Status — v0.5
+## Current Status — Sprint 11 (v0.1.0-dev, ADR 0.8)
 
-MRMI Gateway includes the core node runtime, policy engine, Merkle audit log, mTLS gRPC transport, REST management API, SDKs, embedded dashboard, persistence backends, federated discovery, transit cache, rate limiting, Prometheus metrics, persistent audit storage, and local RS/RU demo corridor.
+The core node runtime is complete and functional: policy engine, Merkle audit log, mTLS gRPC transport, REST management API, embedded dashboard, persistence backends (bbolt / Redis), federated peer discovery, transit cache, rate limiting, Prometheus metrics, and a local RS/RU demo corridor.
 
-### Sprint 10 (v0.5)
+Sprint 11 is a polish sprint: architecture enforcement, lifecycle hardening, API consistency, and doc cleanup. No new runtime capabilities are being added.
 
-- [x] `GET /metrics` — Prometheus text-format endpoint (`metrics_addr` in TOML); counters for allow, deny, duplicate, DLQ depth, transit cache, rate-limit denials, peer count
-- [x] `mrmi node status / peers / dlq / apps` — operator CLI subcommands for inspecting a live node
-- [x] `mrmi token issue` — CLI subcommand to issue a JWT against a running node
-- [x] Audit log persistence — `audit.Log` wired into NodeStore (bbolt / Redis); entries survive restarts; `GET /api/v1/audit/latest` draws from the store when available
-- [x] Sprint 10 acceptance tests + README v0.5
+Roadmap and contributor work are tracked in [GitHub Projects](https://github.com/BozidarTadic/MRMI_Gateway/projects).
 
-Roadmap planning and contributor work are tracked in GitHub Projects instead of this README.
+---
 
 ## Quick Start
 
-**Prerequisites:** Go 1.21+, `protoc` + `protoc-gen-go` + `protoc-gen-go-grpc`
+**Prerequisites:** Go 1.25+
 
 ```bash
-git clone https://github.com/tadicbb/mrmi-gateway
-cd mrmi-gateway
+git clone https://github.com/BozidarTadic/MRMI_Gateway
+cd MRMI_Gateway
 go run ./cmd/mrmi-gateway -config configs/node.balanced.toml
 ```
 
-This starts the node on `:8080` (HTTP) and `:7777` (gRPC) with the balanced compliance profile.
+This starts the node on `:8080` (HTTP management API) and `:7777` (gRPC) with the balanced compliance profile.
 
 **Verify the node is up:**
 
@@ -106,23 +102,44 @@ powershell -ExecutionPolicy Bypass -File scripts\demo-start.ps1
 
 This starts the RS gateway on `:8080`, the RU gateway on `:8081`, and the Blazor demo UI on `http://localhost:5294`.
 
+---
+
 ## Configuration
 
-Nodes are configured via signed TOML files. Three compliance profiles are available (`strict`, `balanced`, `performance`); the shipped configs use `balanced`:
+Nodes are configured via TOML files. Three compliance profiles are available; the shipped configs use `balanced`:
 
-| File | Purpose |
-|---|---|
-| `configs/node.balanced.toml` | Single RS node — default starting point |
-| `configs/node.rs.local.toml` | RS node for local two-node corridor testing |
-| `configs/node.ru.local.toml` | RU node for local two-node corridor testing |
+| File | Purpose | TLS | Notes |
+|---|---|---|---|
+| `configs/node.balanced.toml` | Single RS node — starting point | plaintext | No peers; standalone |
+| `configs/node.rs.local.toml` | RS node for local two-node corridor | `insecure = true` | Demo only |
+| `configs/node.ru.local.toml` | RU node for local two-node corridor | `insecure = true` | Demo only |
+| `configs/node.global.relay.toml` | Global relay template | mTLS (cert paths) | Production example |
+| `configs/node.alliance.eaeu.toml` | EAEU alliance hub template | mTLS (cert paths) | Production example |
 
-Profile definitions (dedup TTL, jitter, padding, dummy traffic rates) live in `internal/config/presets.go`. Full TOML reference in [docs/MRMI_Gateway_ADR_v0_8.md — Appendix A](docs/MRMI_Gateway_ADR_v0_8.md#appendix-a--full-toml-configuration-examples).
+Profile definitions (dedup TTL, jitter, padding, dummy traffic rates) live in `internal/config/presets.go`. Full TOML reference in [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md).
+
+### Production Readiness Checklist
+
+Before deploying a node in a production corridor, verify the following:
+
+| Setting | Demo default | Production requirement |
+|---|---|---|
+| `[tls] insecure` | `true` | `false`; set `cert`, `key`, `ca` |
+| `[node] signed_by` | `ed25519:REPLACE_ME` | Real public key; run `mrmi keygen --output <path>` |
+| `[node] operator_id` | `example-operator` | Your organisation identifier |
+| `[node] policy_version` | `0.1.0` | Increment on every policy change |
+| `[api] api_key` | `demo-key` or unset | Secret key for management API write access |
+| `[storage] backend` | in-memory (unset) | `bbolt` (single-node) or `redis` (clustered) |
+| `[policy.audit] dns_txt_publish` | `true` | Requires a real DNS provider integration |
+| `[network] metrics_addr` | `0.0.0.0:9090` | Restrict to internal network |
+
+---
 
 ## Repository Layout
 
 ```
 cmd/mrmi-gateway/   — node process entrypoint
-cmd/mrmi/           — operator CLI (keygen, audit verify)
+cmd/mrmi/           — operator CLI (keygen, audit verify, node status)
 internal/
   app/              — wiring: audit, policy, HTTP, gRPC, inbox, shutdown
   audit/            — Merkle chain log (SHA-256, Verify, RootHash, Recent)
@@ -149,7 +166,7 @@ internal/
   trustdecay/       — effective tier decay after 30d without cross-validation
   version/          — single source of truth for App + ADR version strings
 proto/mrmi/v1/      — protobuf contracts
-configs/            — operator TOML configs
+configs/            — operator TOML configs (demo and production templates)
 sdk/dotnet/         — .NET 10 SDK (MRMI.Gateway.Client NuGet package)
 sdk/python/         — Python SDK (mrmi-gateway-sdk, PyPI)
 demo/blazor/        — Blazor Server demo: split-screen RS/RU corridor
@@ -159,8 +176,8 @@ docs/               — ADR and operator guides
 
 ## Contributing
 
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md). Open contributor work is tracked in GitHub Projects.
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md). Open contributor work is tracked in [GitHub Projects](https://github.com/BozidarTadic/MRMI_Gateway/projects).
 
 ## License
 
-[MIT](LICENSE) — Copyright (c) 2025 Božidar Tadić
+[MIT](LICENSE) — Copyright (c) 2026 Božidar Tadić

@@ -100,13 +100,13 @@ The audit endpoint returns a JSON object:
 
 ## DLQ inspection
 
-When forwarding to a peer fails after all retries, the envelope moves to the dead-letter queue. Inspect via the gRPC `GetDLQEntries` call or the HTTP endpoint:
+When forwarding to a peer fails after all retries, the envelope moves to the dead-letter queue. Inspect via the HTTP endpoint:
 
 ```bash
-curl http://localhost:8080/dlq   # → JSON array of DLQ entries
+curl http://localhost:8080/api/v1/dlq   # → JSON array of DLQ entries
 ```
 
-Each entry shows the envelope, target peer address, number of attempts, and the last error. Entries remain in memory until the process restarts; persistence is a Sprint 3 milestone.
+Each entry shows the envelope, target peer address, number of attempts, and the last error. DLQ entries are held in memory; they do not survive a process restart unless a persistent storage backend (`bbolt` or `redis`) is configured via `[storage]`.
 
 ## DNS TXT publishing
 
@@ -199,12 +199,14 @@ Every node signs outgoing envelopes with an Ed25519 private key. Receiving nodes
 
 Ephemeral keys are sufficient for local testing. Each process restart generates a new key, so two nodes in the same dev corridor accept each other's envelopes by default (no verification enforced at the transport layer unless you call `NewAdapterWithVerify`).
 
-**Production mode:** place a persistent Ed25519 key at a path known to both nodes. A `mrmi keygen` CLI is planned for Sprint 4. Until then, generate a key with:
+**Production mode:** generate a persistent Ed25519 key pair with the `mrmi keygen` CLI:
 
 ```bash
-openssl genpkey -algorithm ed25519 -out certs/node.ed25519.key
-openssl pkey -in certs/node.ed25519.key -pubout -out certs/node.ed25519.pub
+mrmi keygen --output certs/node.ed25519
+# writes certs/node.ed25519.priv (private key, PEM) and certs/node.ed25519.pub (public key, hex)
 ```
+
+Then set `signing_key` in `[tls]` to the private key path and update `signed_by` in `[node]` with the public key hex printed by `mrmi keygen`.
 
 ### Trust tier configuration
 
