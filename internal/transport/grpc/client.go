@@ -3,8 +3,10 @@ package grpctransport
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -25,15 +27,28 @@ func Dial(ctx context.Context, target string, tlsCfg *tls.Config) (*Client, erro
 		creds = insecure.NewCredentials()
 	}
 
-	conn, err := grpc.DialContext( //nolint:staticcheck // migrate to grpc.NewClient in Sprint 2
-		ctx,
+	conn, err := grpc.NewClient(
 		target,
 		grpc.WithTransportCredentials(creds),
-		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.ForceCodec(jsonCodec{})),
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	conn.Connect()
+	for {
+		state := conn.GetState()
+		if state == connectivity.Ready {
+			break
+		}
+		if state == connectivity.Shutdown {
+			return nil, fmt.Errorf("dial %s: connection shut down", target)
+		}
+		if !conn.WaitForStateChange(ctx, state) {
+			conn.Close()
+			return nil, fmt.Errorf("dial %s: %w", target, ctx.Err())
+		}
 	}
 
 	return &Client{conn: conn}, nil
