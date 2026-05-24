@@ -81,7 +81,7 @@ func (n *Notifier) notify(ctx context.Context, appID string, app config.AppConfi
 	if err != nil {
 		return fmt.Errorf("post: %w", err)
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 
 	// Retry once on 5xx.
 	if resp.StatusCode >= 500 {
@@ -91,7 +91,7 @@ func (n *Notifier) notify(ctx context.Context, appID string, app config.AppConfi
 		if err != nil {
 			return fmt.Errorf("retry post: %w", err)
 		}
-		resp2.Body.Close()
+		defer resp2.Body.Close()
 	}
 	return nil
 }

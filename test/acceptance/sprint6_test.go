@@ -159,9 +159,10 @@ func TestPeersRegister_AppearsInList(t *testing.T) {
 	cfg.Node.NodeID = "peer-reg-node"
 	base, _ := startNodeWithCfg(t, cfg)
 
-	postJSON(t, base+"/api/v1/peers/register", map[string]any{
+	regResp := postJSON(t, base+"/api/v1/peers/register", map[string]any{
 		"addr": "ru-peer.example.com:7777", "region": "RU", "node_scope": "regional",
 	})
+	defer regResp.Body.Close()
 
 	resp := get(t, base+"/api/v1/peers")
 	defer resp.Body.Close()
