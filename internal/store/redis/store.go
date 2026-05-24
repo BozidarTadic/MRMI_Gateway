@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -121,7 +122,7 @@ func (s *Store) CRLPut(entry store.CRLEntry) error {
 // CRLGet retrieves the CRL entry for nodeID. Returns nil if not found.
 func (s *Store) CRLGet(nodeID string) (*store.CRLEntry, error) {
 	v, err := s.client.HGet(context.Background(), s.key("crl"), nodeID).Result()
-	if err == goredis.Nil {
+	if errors.Is(err, goredis.Nil) {
 		return nil, nil
 	}
 	if err != nil {

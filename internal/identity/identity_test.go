@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"errors"
 	"testing"
 
 	"MRMI_Gateway/internal/core"
@@ -50,7 +51,7 @@ func TestVerify_MissingSignature(t *testing.T) {
 		t.Fatalf("GenerateKey: %v", err)
 	}
 	env := testEnvelope()
-	if err := Verify(pub, env, nil); err != ErrMissingSignature {
+	if err := Verify(pub, env, nil); !errors.Is(err, ErrMissingSignature) {
 		t.Fatalf("expected ErrMissingSignature, got %v", err)
 	}
 }

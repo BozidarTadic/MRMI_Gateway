@@ -1,6 +1,7 @@
 package token
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -25,7 +26,7 @@ func TestEvictPreventsReuse(t *testing.T) {
 	tok, _ := s.Issue("app-a", "node-x", time.Minute)
 	s.Evict(tok)
 	_, _, err := s.Resolve(tok)
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound after evict, got %v", err)
 	}
 }
@@ -35,7 +36,7 @@ func TestExpiredTokenRejected(t *testing.T) {
 	tok, _ := s.Issue("app-a", "node-x", time.Millisecond)
 	time.Sleep(5 * time.Millisecond)
 	_, _, err := s.Resolve(tok)
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound after expiry, got %v", err)
 	}
 }
@@ -43,7 +44,7 @@ func TestExpiredTokenRejected(t *testing.T) {
 func TestInvalidTokenRejected(t *testing.T) {
 	s := New()
 	_, _, err := s.Resolve("not-a-real-token")
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for invalid token, got %v", err)
 	}
 }

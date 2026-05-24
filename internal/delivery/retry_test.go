@@ -62,7 +62,7 @@ func TestSendWithRetry_ExhaustionWritesToDLQ(t *testing.T) {
 	if stored.Attempts != 3 {
 		t.Fatalf("expected Attempts=3, got %d", stored.Attempts)
 	}
-	if stored.LastErr != errTransient {
+	if !errors.Is(stored.LastErr, errTransient) {
 		t.Fatalf("expected LastErr=errTransient, got %v", stored.LastErr)
 	}
 }
