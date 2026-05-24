@@ -103,7 +103,7 @@ type Deps struct {
 	Registry       *registry.Registry
 	RuntimePeers   *RuntimePeers
 	RuntimeApps    *RuntimeApps
-	OnConfigReload func() error // called by POST /api/v1/config/reload
+	OnConfigReload func() error                  // called by POST /api/v1/config/reload
 	OnConfigSave   func(cfg config.Config) error // called by PUT /api/v1/config
 }
 
@@ -360,11 +360,11 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"decision":            string(resp.Decision),
-			"reason":              resp.Reason,
-			"profile":             resp.Profile,
-			"node_id":             resp.NodeID,
-			"audit_root_hash":     resp.AuditRootHash,
+			"decision":             string(resp.Decision),
+			"reason":               resp.Reason,
+			"profile":              resp.Profile,
+			"node_id":              resp.NodeID,
+			"audit_root_hash":      resp.AuditRootHash,
 			"peer_audit_root_hash": resp.PeerAuditRootHash,
 		})
 	})
@@ -490,8 +490,8 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 			return
 		}
 		var req struct {
-			NodeID      string `json:"node_id"`
-			Reason      string `json:"reason"`
+			NodeID       string `json:"node_id"`
+			Reason       string `json:"reason"`
 			SignatureB64 string `json:"signature_b64"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

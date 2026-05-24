@@ -269,7 +269,9 @@ func TestJWT_IssueToken_DefaultsToReadScope(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	var body struct{ Scope string `json:"scope"` }
+	var body struct {
+		Scope string `json:"scope"`
+	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.Scope != "read" {
 		t.Fatalf("expected default scope=read, got %q", body.Scope)
@@ -290,7 +292,9 @@ func TestJWT_IssueToken_JWTCanAccessApps(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("issue token: expected 200, got %d", resp.StatusCode)
 	}
-	var tokenBody struct{ Token string `json:"token"` }
+	var tokenBody struct {
+		Token string `json:"token"`
+	}
 	_ = json.NewDecoder(resp.Body).Decode(&tokenBody)
 
 	// Use the JWT to list apps (should work with read scope ≥ 1)
@@ -315,4 +319,3 @@ func TestJWT_IssueToken_503WhenJWTSecretMissing(t *testing.T) {
 		t.Fatalf("expected 503 when JWT secret not set, got %d", resp.StatusCode)
 	}
 }
-

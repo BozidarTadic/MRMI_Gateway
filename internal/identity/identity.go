@@ -39,14 +39,14 @@ func Verify(pubKey ed25519.PublicKey, env core.Envelope, sig []byte) error {
 // excluding the Signature field itself.
 func canonicalPayload(env core.Envelope) []byte {
 	payload := struct {
-		IdempotencyKey    string `json:"idempotency_key"`
-		SenderRegion      string `json:"sender_region"`
-		RecipientRegion   string `json:"recipient_region"`
-		TrustTier         uint32 `json:"trust_tier"`
-		SequenceNumber    uint64 `json:"sequence_number"`
-		Payload           []byte `json:"payload"`
-		PaddedTo          uint32 `json:"padded_to"`
-		Timestamp         int64  `json:"timestamp"`
+		IdempotencyKey  string `json:"idempotency_key"`
+		SenderRegion    string `json:"sender_region"`
+		RecipientRegion string `json:"recipient_region"`
+		TrustTier       uint32 `json:"trust_tier"`
+		SequenceNumber  uint64 `json:"sequence_number"`
+		Payload         []byte `json:"payload"`
+		PaddedTo        uint32 `json:"padded_to"`
+		Timestamp       int64  `json:"timestamp"`
 	}{
 		IdempotencyKey:  env.IdempotencyKey,
 		SenderRegion:    env.SenderRegion,

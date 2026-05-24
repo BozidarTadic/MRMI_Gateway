@@ -243,7 +243,7 @@ func TestRevoke_ViaAPIEndpoint(t *testing.T) {
 	base, _, _, crlStore, _, _ := startNode(t)
 
 	body := map[string]any{
-		"reason":       "test revoke",
+		"reason":        "test revoke",
 		"signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 	}
 	resp := postJSON(t, base+"/api/v1/revoke/bad-node-revoke", body)
@@ -323,8 +323,8 @@ func TestWebhook_DeliveredOnAllow(t *testing.T) {
 	cfg.Node.NodeID = "webhook-test-node"
 	cfg.Apps = map[string]config.AppConfig{
 		"hook-app": {
-			WebhookURL:    webhookSrv.URL,
-			WebhookSecret: "test-secret",
+			WebhookURL:     webhookSrv.URL,
+			WebhookSecret:  "test-secret",
 			WebhookTimeout: 5,
 		},
 	}

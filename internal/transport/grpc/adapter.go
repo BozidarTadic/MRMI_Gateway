@@ -12,10 +12,10 @@ import (
 
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/connect"
-	"MRMI_Gateway/internal/logger"
 	"MRMI_Gateway/internal/core"
 	"MRMI_Gateway/internal/discovery"
 	"MRMI_Gateway/internal/identity"
+	"MRMI_Gateway/internal/logger"
 	"MRMI_Gateway/internal/metrics"
 	"MRMI_Gateway/internal/peercache"
 	"MRMI_Gateway/internal/peerdiscovery"
@@ -65,8 +65,8 @@ type DiscoveryDeps struct {
 	ConnectRes       *connect.Resolver
 	PolicyEng        *policy.Engine
 	PeerRegistry     *peerdiscovery.Registry
-	DiscoveryLimiter *ratelimit.Limiter  // nil = unlimited
-	Metrics          *metrics.Registry   // nil = no metrics
+	DiscoveryLimiter *ratelimit.Limiter // nil = unlimited
+	Metrics          *metrics.Registry  // nil = no metrics
 	NodeCfg          config.Config
 }
 

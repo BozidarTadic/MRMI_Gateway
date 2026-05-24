@@ -40,11 +40,11 @@ type APIConfig struct {
 
 // AppConfig describes a registered application (webhook target + user registry).
 type AppConfig struct {
-	WebhookURL      string
-	WebhookSecret   string
-	WebhookTimeout  int // seconds; default 5
-	AutoAccept      string // "manual" | "auto_whitelist" | "auto_mutual" | "auto_all"
-	Users           map[string]UserConfig
+	WebhookURL     string
+	WebhookSecret  string
+	WebhookTimeout int    // seconds; default 5
+	AutoAccept     string // "manual" | "auto_whitelist" | "auto_mutual" | "auto_all"
+	Users          map[string]UserConfig
 }
 
 // UserConfig describes a user registered with this node.
@@ -63,19 +63,19 @@ type TLSConfig struct {
 }
 
 type NodeConfig struct {
-	NodeID              string
-	NodeScope           string // "regional" | "alliance" | "global"
-	Region              string // physical region; required for regional and global nodes
-	Regions             []string // served regions; required for alliance nodes
-	AllianceID          string   // legal agreement reference; required for alliance nodes
-	Disclaimer          string   // e.g. "no-data-residency-claims"; used for global nodes
-	OperatorID          string
-	PolicyVersion       string
-	ApplicableLaw       string
-	SignedBy            string
-	DiscoveryTokenTTL   time.Duration // TTL for opaque tokens issued during BroadcastDiscovery; default 5m
-	LogLevel            string        // "debug" | "info" | "warn" | "error"; default "info"
-	LogFormat           string        // "json" | "text"; default "text"
+	NodeID            string
+	NodeScope         string   // "regional" | "alliance" | "global"
+	Region            string   // physical region; required for regional and global nodes
+	Regions           []string // served regions; required for alliance nodes
+	AllianceID        string   // legal agreement reference; required for alliance nodes
+	Disclaimer        string   // e.g. "no-data-residency-claims"; used for global nodes
+	OperatorID        string
+	PolicyVersion     string
+	ApplicableLaw     string
+	SignedBy          string
+	DiscoveryTokenTTL time.Duration // TTL for opaque tokens issued during BroadcastDiscovery; default 5m
+	LogLevel          string        // "debug" | "info" | "warn" | "error"; default "info"
+	LogFormat         string        // "json" | "text"; default "text"
 }
 
 type ProfileConfig struct {
@@ -261,19 +261,19 @@ func (c Config) Validate() error {
 // TOML key names; apply() converts them to time.Duration.
 type rawTOML struct {
 	Node struct {
-		NodeID                string   `toml:"node_id"`
-		NodeScope             string   `toml:"node_scope"`
-		Region                string   `toml:"region"`
-		Regions               []string `toml:"regions"`
-		AllianceID            string   `toml:"alliance_id"`
-		Disclaimer            string   `toml:"disclaimer"`
-		OperatorID            string   `toml:"operator_id"`
-		PolicyVersion         string   `toml:"policy_version"`
-		ApplicableLaw         string   `toml:"applicable_law"`
-		SignedBy              string   `toml:"signed_by"`
-		DiscoveryTokenTTLS    int      `toml:"discovery_token_ttl_s"`
-		LogLevel              string   `toml:"log_level"`
-		LogFormat             string   `toml:"log_format"`
+		NodeID             string   `toml:"node_id"`
+		NodeScope          string   `toml:"node_scope"`
+		Region             string   `toml:"region"`
+		Regions            []string `toml:"regions"`
+		AllianceID         string   `toml:"alliance_id"`
+		Disclaimer         string   `toml:"disclaimer"`
+		OperatorID         string   `toml:"operator_id"`
+		PolicyVersion      string   `toml:"policy_version"`
+		ApplicableLaw      string   `toml:"applicable_law"`
+		SignedBy           string   `toml:"signed_by"`
+		DiscoveryTokenTTLS int      `toml:"discovery_token_ttl_s"`
+		LogLevel           string   `toml:"log_level"`
+		LogFormat          string   `toml:"log_format"`
 	} `toml:"node"`
 
 	Profile struct {
@@ -320,16 +320,16 @@ type rawTOML struct {
 	} `toml:"policy"`
 
 	Network struct {
-		GRPCListenAddr     string   `toml:"grpc_listen_addr"` // preferred key
-		ListenAddr         string   `toml:"listen_addr"`      // legacy alias
-		GRPCPort           int      `toml:"grpc_port"`        // legacy fallback
-		HTTPListenAddr     string   `toml:"http_listen_addr"`
-		HTTPPort           int      `toml:"http_port"`
-		MetricsAddr        string   `toml:"metrics_addr"`
-		MetricsPort        int      `toml:"metrics_port"`
-		ShutdownTimeoutS   int      `toml:"shutdown_timeout_s"`
-		BootstrapNodes     []string `toml:"bootstrap_nodes"`
-		PeerGossipIntervalS int     `toml:"peer_gossip_interval_s"`
+		GRPCListenAddr      string   `toml:"grpc_listen_addr"` // preferred key
+		ListenAddr          string   `toml:"listen_addr"`      // legacy alias
+		GRPCPort            int      `toml:"grpc_port"`        // legacy fallback
+		HTTPListenAddr      string   `toml:"http_listen_addr"`
+		HTTPPort            int      `toml:"http_port"`
+		MetricsAddr         string   `toml:"metrics_addr"`
+		MetricsPort         int      `toml:"metrics_port"`
+		ShutdownTimeoutS    int      `toml:"shutdown_timeout_s"`
+		BootstrapNodes      []string `toml:"bootstrap_nodes"`
+		PeerGossipIntervalS int      `toml:"peer_gossip_interval_s"`
 	} `toml:"network"`
 
 	Peers map[string]struct {

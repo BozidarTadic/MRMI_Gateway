@@ -48,14 +48,14 @@ func (m *memStore) AuditLatest(n int) ([]store.AuditEntry, error) {
 	return out, nil
 }
 
-func (m *memStore) Deduped(string, time.Duration) (bool, error)         { return false, nil }
-func (m *memStore) DLQPush(store.DLQEntry) error                        { return nil }
-func (m *memStore) DLQList() ([]store.DLQEntry, error)                  { return nil, nil }
-func (m *memStore) DLQDelete(string) error                              { return nil }
-func (m *memStore) CRLPut(store.CRLEntry) error                         { return nil }
-func (m *memStore) CRLGet(string) (*store.CRLEntry, error)              { return nil, nil }
-func (m *memStore) CRLList() ([]store.CRLEntry, error)                  { return nil, nil }
-func (m *memStore) Close() error                                        { return nil }
+func (m *memStore) Deduped(string, time.Duration) (bool, error) { return false, nil }
+func (m *memStore) DLQPush(store.DLQEntry) error                { return nil }
+func (m *memStore) DLQList() ([]store.DLQEntry, error)          { return nil, nil }
+func (m *memStore) DLQDelete(string) error                      { return nil }
+func (m *memStore) CRLPut(store.CRLEntry) error                 { return nil }
+func (m *memStore) CRLGet(string) (*store.CRLEntry, error)      { return nil, nil }
+func (m *memStore) CRLList() ([]store.CRLEntry, error)          { return nil, nil }
+func (m *memStore) Close() error                                { return nil }
 
 func TestLog_AppendPersistsToStore(t *testing.T) {
 	cfg := config.DefaultBalancedConfig()

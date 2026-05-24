@@ -11,9 +11,9 @@ import (
 // Timer tracks the last cross-validation timestamp per peer node and reduces
 // the effective trust tier when no validation has occurred within DecayWindow.
 type Timer struct {
-	mu           sync.RWMutex
+	mu            sync.RWMutex
 	lastValidated map[string]time.Time
-	DecayWindow  time.Duration // default 30 days
+	DecayWindow   time.Duration // default 30 days
 	checkInterval time.Duration
 }
 

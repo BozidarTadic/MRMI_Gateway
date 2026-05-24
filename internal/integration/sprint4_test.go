@@ -353,4 +353,3 @@ func TestRootHashGossip_ShareRootHashRoundTrip(t *testing.T) {
 		t.Fatalf("expected sha256:deadbeef in cache, got %q", all["rs-node-01"].RootHash)
 	}
 }
-

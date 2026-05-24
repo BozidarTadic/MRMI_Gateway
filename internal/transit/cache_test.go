@@ -77,7 +77,7 @@ func TestPut_EvictsOldestWhenFull(t *testing.T) {
 	c := New(30 * time.Second)
 	// Fill to capacity.
 	for i := 0; i < maxEntries; i++ {
-		c.Put(core.Envelope{IdempotencyKey: string(rune('a' + i%26)) + string(rune('0'+i/26))}, "peer:7777")
+		c.Put(core.Envelope{IdempotencyKey: string(rune('a'+i%26)) + string(rune('0'+i/26))}, "peer:7777")
 	}
 	// One more should trigger eviction — size must stay at maxEntries.
 	c.Put(env("overflow"), "peer:7777")

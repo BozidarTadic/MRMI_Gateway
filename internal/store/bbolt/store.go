@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	bucketDedup  = []byte("dedup")
-	bucketDLQ    = []byte("dlq")
-	bucketAudit  = []byte("audit")
-	bucketCRL    = []byte("crl")
+	bucketDedup = []byte("dedup")
+	bucketDLQ   = []byte("dlq")
+	bucketAudit = []byte("audit")
+	bucketCRL   = []byte("crl")
 )
 
 // Store is a bbolt-backed implementation of store.NodeStore.

@@ -15,8 +15,8 @@ func appCfg(webhookURL, secret string) config.Config {
 	cfg := config.DefaultBalancedConfig()
 	cfg.Apps = map[string]config.AppConfig{
 		"test-app": {
-			WebhookURL:    webhookURL,
-			WebhookSecret: secret,
+			WebhookURL:     webhookURL,
+			WebhookSecret:  secret,
 			WebhookTimeout: 5,
 		},
 	}
