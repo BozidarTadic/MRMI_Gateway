@@ -306,7 +306,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		}
 	}
 
-	httpServer := server.NewHTTPServer(cfg, server.ServerDeps{
+	httpServer := server.NewHTTPServer(cfg, server.Deps{
 		Engine:         engine,
 		Audit:          auditLog,
 		PrivKey:        signingKey,

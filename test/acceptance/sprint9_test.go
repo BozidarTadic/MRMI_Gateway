@@ -75,7 +75,7 @@ func startNodeV4(t *testing.T, cfg config.Config) (baseURL string, dlq *delivery
 	_ = l.Close()
 	cfg.Network.HTTPListenAddr = httpAddr
 
-	httpSrv := server.NewHTTPServer(cfg, server.ServerDeps{
+	httpSrv := server.NewHTTPServer(cfg, server.Deps{
 		Engine:       engine,
 		Audit:        auditLog,
 		Gateway:      gw,

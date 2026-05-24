@@ -71,7 +71,7 @@ func startNodeWithCfg(t *testing.T, cfg config.Config) (string, *core.Gateway) {
 	httpAddr := "127.0.0.1:" + port
 	cfg.Network.HTTPListenAddr = httpAddr
 
-	httpSrv := server.NewHTTPServer(cfg, server.ServerDeps{
+	httpSrv := server.NewHTTPServer(cfg, server.Deps{
 		Engine:       engine,
 		Audit:        auditLog,
 		Gateway:      gw,

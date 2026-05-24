@@ -66,7 +66,7 @@ func startNodeV3(t *testing.T, cfg config.Config) (string, *server.RuntimeApps) 
 	cfg.Network.HTTPListenAddr = httpAddr
 
 	runtimeApps := server.NewRuntimeApps()
-	httpSrv := server.NewHTTPServer(cfg, server.ServerDeps{
+	httpSrv := server.NewHTTPServer(cfg, server.Deps{
 		Engine:       engine,
 		Audit:        auditLog,
 		Gateway:      gw,

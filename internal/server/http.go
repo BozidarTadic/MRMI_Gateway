@@ -89,9 +89,9 @@ func (ra *RuntimeApps) All() []runtimeApp {
 	return out
 }
 
-// ServerDeps holds optional dependencies for the HTTP server.
+// Deps holds optional dependencies for the HTTP server.
 // All fields may be nil; endpoints that require a nil dep return 503.
-type ServerDeps struct {
+type Deps struct {
 	Engine         *policy.Engine
 	Audit          *audit.Log
 	PrivKey        ed25519.PrivateKey
@@ -182,7 +182,7 @@ func corsHeaders(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-MRMI-Key, Authorization")
 }
 
-func NewHTTPServer(cfg config.Config, deps ServerDeps) *HTTPServer {
+func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 	mux := http.NewServeMux()
 	startTime := time.Now()
 

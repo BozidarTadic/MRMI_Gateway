@@ -78,7 +78,7 @@ func startHTTPNode(t *testing.T, cfg config.Config, privKey ed25519.PrivateKey, 
 	_ = l.Close()
 
 	cfg.Network.HTTPListenAddr = httpAddr
-	httpSrv := server.NewHTTPServer(cfg, server.ServerDeps{
+	httpSrv := server.NewHTTPServer(cfg, server.Deps{
 		Engine:  engine,
 		Audit:   auditLog,
 		PrivKey: privKey,

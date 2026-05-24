@@ -81,7 +81,7 @@ func startNode(t *testing.T) (string, *core.Gateway, *delivery.DLQ, *crl.Store, 
 	_ = l.Close()
 	cfg.Network.HTTPListenAddr = httpAddr
 
-	httpSrv := server.NewHTTPServer(cfg, server.ServerDeps{
+	httpSrv := server.NewHTTPServer(cfg, server.Deps{
 		Engine:  engine,
 		Audit:   auditLog,
 		Peers:   nil,
