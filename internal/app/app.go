@@ -379,8 +379,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		NodeCfg:          cfg,
 	}
 
-	var adapter grpctransport.GatewayService
-	adapter = grpctransport.NewAdapterWithDiscovery(gw, nil, peerCache, discoveryDeps)
+	adapter := grpctransport.NewAdapterWithDiscovery(gw, nil, peerCache, discoveryDeps)
 
 	grpcServer, err := grpctransport.NewServer(cfg.Network.GRPCListenAddr, adapter, serverTLS)
 	if err != nil {

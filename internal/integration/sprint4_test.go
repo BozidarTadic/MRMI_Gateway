@@ -7,10 +7,8 @@ package integration
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
@@ -356,9 +354,3 @@ func TestRootHashGossip_ShareRootHashRoundTrip(t *testing.T) {
 	}
 }
 
-// loadPubKeyFromCert is a helper used in the signing test.
-func loadPubKeyFromCert(t *testing.T, pub ed25519.PublicKey) string {
-	t.Helper()
-	pubBytes, _ := x509.MarshalPKIXPublicKey(pub)
-	return string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubBytes}))
-}

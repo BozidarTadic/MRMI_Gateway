@@ -148,7 +148,7 @@ func (a *gatewayAdapter) SendEnvelope(ctx context.Context, req *SendEnvelopeRequ
 	}, nil
 }
 
-func (a *gatewayAdapter) GetNodeInfo(ctx context.Context, req *GetNodeInfoRequest) (*GetNodeInfoResponse, error) {
+func (a *gatewayAdapter) GetNodeInfo(ctx context.Context, _ *GetNodeInfoRequest) (*GetNodeInfoResponse, error) {
 	info, err := a.gw.GetNodeInfo(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
