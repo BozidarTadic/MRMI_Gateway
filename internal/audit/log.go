@@ -19,8 +19,7 @@ const (
 	DecisionAllow         Decision = "ALLOW"
 	DecisionDeny          Decision = "DENY"
 	DecisionDuplicate     Decision = "DUPLICATE"
-	DecisionDummy         Decision = "ALLOW/DUMMY"
-	DecisionTransitCached Decision = "ALLOW/TRANSIT_CACHED"
+	DecisionDummy Decision = "ALLOW/DUMMY"
 )
 
 type Entry struct {

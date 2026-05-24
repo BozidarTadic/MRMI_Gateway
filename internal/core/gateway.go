@@ -26,7 +26,6 @@ type Decision string
 
 const (
 	DecisionAllow     Decision = "ALLOW"
-	DecisionDeny      Decision = "DENY"
 	DecisionDuplicate Decision = "DUPLICATE"
 )
 
