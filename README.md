@@ -8,9 +8,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](go.mod)
 
-**Multi-Regional Multi-App Interlock** — open-source federation middleware for regulated cross-border messaging corridors.
+**Multi-Regional Multi-App Interlock** — open-source federation middleware that enforces legal-compliance constraints at the **transport layer** for regulated cross-border data corridors.
 
-MRMI Gateway sits between messaging applications and enforces legal-compliance constraints at the **transport layer** — not bolted on afterwards by operators. Think Apache Kafka for cross-border messaging infrastructure, with built-in policy enforcement, verifiable audit trails, and identity revocation.
+MRMI Gateway sits between applications and handles cross-border routing, policy enforcement, verifiable audit trails, and identity revocation — without ever touching the payload. Think Apache Kafka for cross-border regulated infrastructure: universal by design, with messaging as the primary and current focus.
+
+> **v0.9 goal:** make MRMI universally adaptable — not only for messaging, but for any regulated domain (financial, healthcare, logistics). Messaging remains the production target and default domain.
 
 > *"Legal compliance is not a deployment concern — it is an architectural constraint enforced at the transport layer."*
 
@@ -30,21 +32,34 @@ EU/US corridors: deferred to v1.0.
 
 ## Architecture
 
+Starting with v0.9, MRMI is formally a **protocol specification**, not only a gateway implementation. The Go binary is the reference implementation — any language may implement a compatible node.
+
 ```
-App A (RU)                                              App B (RS)
-    │                                                       │
-    ▼                                                       ▼
-MRMI Node (RU) ──── gRPC/mTLS ────── MRMI Node (RS)
-    │                                       │
-    ├── Policy Engine (allow/deny by region + trust tier)
-    ├── Merkle Audit Log (SHA-256 chained, DNS TXT published)
-    ├── Identity Resolution (T0–T3 trust tiers)
-    └── CRL + Blacklist Gossip (≥2 T2+ quorum for revocation)
+┌──────────────────────────────────────────────────────────┐
+│  APPLICATION LAYER                                       │
+│  Business logic, domain semantics, user-facing features  │
+│  (Messaging app, Financial system, EHR, Logistics)       │
+└────────────────────────┬─────────────────────────────────┘
+                         │
+┌────────────────────────▼─────────────────────────────────┐
+│  SCHEMA LAYER  (new in v0.9)                             │
+│  Schema Registry — domain adapter registration & routing │
+│  Adapters: messaging | iso20022 | hl7fhir | edifact      │
+│  Gateway validates envelope; payload stays opaque        │
+└────────────────────────┬─────────────────────────────────┘
+                         │
+┌────────────────────────▼─────────────────────────────────┐
+│  TRANSPORT LAYER                                         │
+│  Routing · Delivery · Policy · Audit · mTLS · Revocation │
+│  Does NOT open payload — envelope only                   │
+└──────────────────────────────────────────────────────────┘
+
+App A (RU) ── SDK ── MRMI Node (RU) ══ gRPC/mTLS ══ MRMI Node (RS) ── SDK ── App B (RS)
 ```
 
 Each node runs a Go binary. Nodes communicate over gRPC with mutual TLS. Every envelope is policy-checked, deduplicated via idempotency key, and appended to a Merkle audit log whose root hash is published to DNS TXT for independent verification.
 
-Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md)
+Full architecture: [docs/MRMI_Gateway_ADR_v0_9.md](docs/MRMI_Gateway_ADR_v0_9.md)
 
 ## Key Properties
 
@@ -56,12 +71,16 @@ Full architecture: [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md
 | Identity trust | T0 (anonymous) → T3 (legal entity), revocable via CRL gossip |
 | Traffic analysis resistance | Configurable timing jitter + payload padding per profile |
 | Compliance profiles | `strict` / `balanced` / `performance` — maps to 152-ФЗ / GDPR / Kazakhstan |
+| Schema Registry | `schema_type` + `schema_version` envelope fields; built-in adapters: `messaging`, `iso20022`, `hl7fhir`, `edifact`, `custom:*` |
+| Jurisdiction isolation | Per-schema-type tier and jurisdiction restrictions independent of sender/recipient region |
+| Financial corridors | ISO 20022 adapter with settlement finality, cutoff windows, BIC routing hint, 72h dedup TTL |
+| Protocol independence | Any language may implement a compatible MRMI node — envelope contract is implementation-independent |
 
-## Current Status — Sprint 11 (v0.1.0-dev, ADR 0.8)
+## Current Status — ADR v0.9 (v0.1.0-dev)
 
 The core node runtime is complete and functional: policy engine, Merkle audit log, mTLS gRPC transport, REST management API, embedded dashboard, persistence backends (bbolt / Redis), federated peer discovery, transit cache, rate limiting, Prometheus metrics, and a local RS/RU demo corridor.
 
-Sprint 11 is a polish sprint: architecture enforcement, lifecycle hardening, API consistency, and doc cleanup. No new runtime capabilities are being added.
+**v0.9 adds (in progress):** Schema Registry (ADR-015), `schema_type`/`schema_version` envelope fields, `jurisdiction_isolation` policy extension, messaging domain adapter, Protocol Specification document, and `.NET SDK` SchemaType enum. ISO 20022 financial adapter is scoped to v0.2.
 
 Roadmap and contributor work are tracked in [GitHub Projects](https://github.com/BozidarTadic/MRMI_Gateway/projects).
 
@@ -116,7 +135,7 @@ Nodes are configured via TOML files. Three compliance profiles are available; th
 | `configs/node.global.relay.toml` | Global relay template | mTLS (cert paths) | Production example |
 | `configs/node.alliance.eaeu.toml` | EAEU alliance hub template | mTLS (cert paths) | Production example |
 
-Profile definitions (dedup TTL, jitter, padding, dummy traffic rates) live in `internal/config/presets.go`. Full TOML reference in [docs/MRMI_Gateway_ADR_v0_8.md](docs/MRMI_Gateway_ADR_v0_8.md).
+Profile definitions (dedup TTL, jitter, padding, dummy traffic rates) live in `internal/config/presets.go`. Full TOML reference in [docs/MRMI_Gateway_ADR_v0_9.md](docs/MRMI_Gateway_ADR_v0_9.md).
 
 ### Production Readiness Checklist
 
@@ -155,8 +174,10 @@ internal/
   integration/      — multi-node end-to-end tests
   registry/         — user discovery, opaque tokens, connect/auto-accept
   webhook/          — HMAC-SHA256 push notifications to app webhooks
-  policy/           — policy engine (region allow/deny, trust tier, CRL)
+  policy/           — policy engine (region allow/deny, trust tier, CRL, jurisdiction_isolation)
+  schema/           — Schema Registry: adapter registration, schema_type routing, jurisdiction isolation
   server/           — HTTP endpoints (healthz, readyz, management API, SSE)
+
   session/          — per-sender sequence number tracker
   testcerts/        — in-process self-signed cert generation (tests only)
   tlsutil/          — LoadServerTLS / LoadClientTLS
@@ -171,7 +192,7 @@ sdk/dotnet/         — .NET 10 SDK (MRMI.Gateway.Client NuGet package)
 sdk/python/         — Python SDK (mrmi-gateway-sdk, PyPI)
 demo/blazor/        — Blazor Server demo: split-screen RS/RU corridor
 test/acceptance/    — end-to-end REST API acceptance tests
-docs/               — ADR and operator guides
+docs/               — ADR v0.1–v0.9 (per-version files + index) + operator guides
 ```
 
 ## Contributing

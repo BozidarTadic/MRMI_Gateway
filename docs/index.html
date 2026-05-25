@@ -367,13 +367,13 @@
 <nav>
   <div class="nav-logo">
     <span>MRMI Gateway</span>
-    <span class="tag">v0.5</span>
+    <span class="tag">v0.9</span>
   </div>
   <div class="nav-links">
     <a href="#how-it-works" class="hide-sm">How It Works</a>
     <a href="#features" class="hide-sm">Features</a>
     <a href="#quickstart" class="hide-sm">Quick Start</a>
-    <a href="MRMI_Gateway_ADR_v0_8.md" class="hide-sm">ADR</a>
+    <a href="MRMI_Gateway_ADR_v0_9.md" class="hide-sm">ADR</a>
     <a href="https://github.com/BozidarTadic/MRMI_Gateway" class="btn btn-ghost" target="_blank" rel="noopener">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.268 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.026 2.747-1.026.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
       GitHub
@@ -383,24 +383,25 @@
 
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-badge">Open Source · MIT License · v0.5</div>
+  <div class="hero-badge">Open Source · MIT License · v0.9</div>
   <h1>Compliance is <span class="grad">Architecture.</span></h1>
   <p>
     MRMI Gateway is federation middleware that enforces cross-border data sovereignty
     at the transport layer — before your operators can accidentally disable it.
+    Built for messaging. Designed for any regulated domain.
   </p>
   <div class="hero-ctas">
     <a href="https://github.com/BozidarTadic/MRMI_Gateway" class="btn btn-primary" target="_blank" rel="noopener">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.268 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.026 2.747-1.026.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
       View on GitHub
     </a>
-    <a href="MRMI_Gateway_ADR_v0_8.md" class="btn btn-ghost">Read the ADR →</a>
+    <a href="MRMI_Gateway_ADR_v0_9.md" class="btn btn-ghost">Read the ADR →</a>
   </div>
   <div class="hero-badges">
     <img src="https://github.com/BozidarTadic/MRMI_Gateway/actions/workflows/ci.yml/badge.svg" alt="CI">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT">
-    <img src="https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go&logoColor=white" alt="Go">
-    <img src="https://img.shields.io/badge/status-v0.5_active-00d4aa" alt="Status">
+    <img src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go">
+    <img src="https://img.shields.io/badge/status-v0.9_active-00d4aa" alt="Status">
   </div>
   <div class="quote-bar">
     <strong>"Legal compliance is not a deployment concern —</strong> it is an architectural constraint enforced at the transport layer."
@@ -452,6 +453,7 @@
     <p class="section-sub">
       Each MRMI node runs a Go binary. Nodes communicate over gRPC with mutual TLS.
       Every envelope is policy-checked, deduplicated, and appended to a Merkle audit chain.
+      <strong>v0.9</strong> adds a Schema Layer that makes the protocol universally adaptable — messaging first, any regulated domain next.
     </p>
     <div class="flow">
       <div class="flow-row">
@@ -513,6 +515,20 @@
             <p>Idempotency key + dedup index + ACK/retry. Failed deliveries go to DLQ. Transit cache bridges short outages.</p>
           </div>
         </div>
+        <div class="pillar">
+          <div class="pillar-icon">🗂️</div>
+          <div>
+            <h4>Schema Registry <span style="font-size:.7rem;color:var(--teal);font-family:'JetBrains Mono',monospace">NEW v0.9</span></h4>
+            <p>Domain adapters: <code>messaging</code>, <code>iso20022</code>, <code>hl7fhir</code>, <code>edifact</code>, <code>custom:*</code>. Gateway validates envelope only — payload stays opaque.</p>
+          </div>
+        </div>
+        <div class="pillar">
+          <div class="pillar-icon">🔒</div>
+          <div>
+            <h4>Jurisdiction Isolation <span style="font-size:.7rem;color:var(--teal);font-family:'JetBrains Mono',monospace">NEW v0.9</span></h4>
+            <p>Per-schema-type tier and jurisdiction restrictions. Financial messages can be locked to regional nodes independent of sender/recipient policy.</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -526,7 +542,8 @@
     <div class="section-label">// capabilities</div>
     <h2 class="section-title">Built-in, not bolted on</h2>
     <p class="section-sub">
-      Every feature serves the core guarantee: regulated cross-border messaging that operators cannot accidentally misconfigure.
+      Every feature serves the core guarantee: regulated cross-border data delivery that operators cannot accidentally misconfigure.
+      Messaging is the primary and current focus — the architecture is ready for more.
     </p>
     <div class="features-grid">
       <div class="feature-card">
@@ -576,6 +593,21 @@
         <div class="feature-icon">🔒</div>
         <h3>mTLS Transport</h3>
         <p>All inter-node gRPC traffic requires mutual TLS. Test certs are generated in-process via <code>internal/testcerts/</code> — nothing committed, nothing via openssl.</p>
+      </div>
+      <div class="feature-card" style="border-color:rgba(0,212,170,.25)">
+        <div class="feature-icon">🗂️</div>
+        <h3>Schema Registry <span style="font-size:.7rem;color:var(--teal);font-family:'JetBrains Mono',monospace">v0.9</span></h3>
+        <p>Declare payload domains via <code>schema_type</code> in the envelope. Built-in adapters for messaging, ISO 20022, HL7/FHIR, and EDIFACT. Custom adapters via TOML. Gateway never inspects the payload.</p>
+      </div>
+      <div class="feature-card" style="border-color:rgba(0,212,170,.25)">
+        <div class="feature-icon">💸</div>
+        <h3>Financial Corridors <span style="font-size:.7rem;color:var(--teal);font-family:'JetBrains Mono',monospace">v0.2</span></h3>
+        <p>ISO 20022 adapter with settlement finality, per-corridor cutoff windows, 72h dedup TTL, BIC routing hints, and <code>retain_long</code> audit flag for 7-year log retention.</p>
+      </div>
+      <div class="feature-card" style="border-color:rgba(0,212,170,.25)">
+        <div class="feature-icon">📜</div>
+        <h3>Protocol Specification <span style="font-size:.7rem;color:var(--teal);font-family:'JetBrains Mono',monospace">v0.9</span></h3>
+        <p>MRMI is a protocol, not just a Go binary. The envelope contract, policy interface, and audit format are normative — any language may implement a compatible node.</p>
       </div>
     </div>
   </div>
@@ -704,7 +736,7 @@
   <div class="section-inner">
     <div class="section-label">// quick start</div>
     <h2 class="section-title">Up in 60 seconds</h2>
-    <p class="section-sub">Prerequisites: Go 1.21+, <code>protoc</code> + <code>protoc-gen-go</code> + <code>protoc-gen-go-grpc</code></p>
+    <p class="section-sub">Prerequisites: Go 1.25+ (protoc only needed to regenerate proto — generated files are committed)</p>
 
     <div class="code-block">
       <div class="code-header">
@@ -764,7 +796,7 @@
         <div class="sdk-icon">🐹</div>
         <div>
           <div class="sdk-name">Go</div>
-          <div class="sdk-status ready">● v0.5 — reference</div>
+          <div class="sdk-status ready">● v0.9 — reference</div>
         </div>
       </div>
       <div class="sdk-card">
@@ -843,22 +875,23 @@
       </div>
       <div class="footer-col">
         <h5>Documentation</h5>
-        <a href="MRMI_Gateway_ADR_v0_8.md">Architecture ADR v0.5</a>
+        <a href="MRMI_Gateway_ADR_v0_9.md">Architecture ADR v0.9</a>
         <a href="LOCAL_TWO_NODE_GUIDE.md">Local Two-Node Guide</a>
         <a href="SEED_NODE_GUIDE.md">Seed Node Guide</a>
         <a href="ALLIANCE_NODE_GUIDE.md">Alliance Node Guide</a>
         <a href="CONTRIBUTING.md">Contributing</a>
       </div>
       <div class="footer-col">
-        <h5>Sprints</h5>
-        <a href="SPRINT_11_PLAN.md">Sprint 11 (current)</a>
-        <a href="SPRINT_10_PLAN.md">Sprint 10 — v0.5</a>
-        <a href="SPRINT_6_PLAN.md">Sprint 6 — v0.3</a>
+        <h5>ADR History</h5>
+        <a href="ADR_INDEX.md">ADR Index (v0.1–v0.9)</a>
+        <a href="MRMI_Gateway_ADR_v0_9.md">ADR v0.9 (current)</a>
+        <a href="MRMI_Gateway_ADR_v0_8.md">ADR v0.8</a>
+        <a href="https://github.com/BozidarTadic/MRMI_Gateway/projects" target="_blank" rel="noopener">GitHub Projects (roadmap)</a>
       </div>
     </div>
   </div>
   <div class="footer-bottom">
-    <span>Copyright © 2025 Božidar Tadić · MIT License</span>
+    <span>Copyright © 2026 Božidar Tadić · MIT License</span>
     <span>Multi-Regional Multi-App Interlock</span>
   </div>
 </footer>
