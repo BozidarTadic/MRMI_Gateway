@@ -44,13 +44,16 @@ type NodeStore interface {
 	// If not seen, it registers the key and returns false. Atomic.
 	Deduped(key string, ttl time.Duration) (bool, error)
 
+	// DLQPush persists a dead-letter entry to the store.
 	DLQPush(entry DLQEntry) error
 	DLQList() ([]DLQEntry, error)
 	DLQDelete(id string) error
 
+	// AuditAppend appends an audit entry to the persistent store.
 	AuditAppend(entry AuditEntry) error
 	AuditLatest(n int) ([]AuditEntry, error)
 
+	// CRLPut upserts a certificate revocation record.
 	CRLPut(entry CRLEntry) error
 	CRLGet(nodeID string) (*CRLEntry, error)
 	CRLList() ([]CRLEntry, error)
