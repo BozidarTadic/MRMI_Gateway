@@ -97,8 +97,7 @@ func startNode(t *testing.T) (string, *core.Gateway, *delivery.DLQ, *crl.Store, 
 		_ = httpSrv.Shutdown(ctx)
 	})
 
-	time.Sleep(50 * time.Millisecond)
-
+	waitReady(t, "http://"+httpAddr)
 	return "http://" + httpAddr, gw, dlq, crlStore, auditLog, msgInbox
 }
 
@@ -132,6 +131,24 @@ func jsonBody(t *testing.T, v any) *bytes.Reader {
 	t.Helper()
 	b, _ := json.Marshal(v)
 	return bytes.NewReader(b)
+}
+
+// waitReady polls /healthz until the server responds 200 or the 2-second deadline passes.
+// Replaces time.Sleep(50ms) in node-start helpers to eliminate flaky startup races.
+func waitReady(t *testing.T, baseURL string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(baseURL + "/healthz")
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("server not ready after 2s")
 }
 
 // TestHealthz confirms the legacy health endpoint is still served.

@@ -92,7 +92,7 @@ func startNodeV4(t *testing.T, cfg config.Config) (baseURL string, dlq *delivery
 		_ = httpSrv.Shutdown(ctx)
 	})
 
-	time.Sleep(50 * time.Millisecond)
+	waitReady(t, "http://"+httpAddr)
 	return "http://" + httpAddr, dlq, tcache
 }
 

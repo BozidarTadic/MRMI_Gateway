@@ -69,7 +69,6 @@ func launchNode(t *testing.T, cfg config.Config, auditLog *audit.Log) (string, f
 		RuntimeApps:  server.NewRuntimeApps(),
 	})
 	go func() { _ = httpSrv.ListenAndServe() }()
-	time.Sleep(50 * time.Millisecond)
 
 	var once sync.Once
 	shutdown := func() {
@@ -83,6 +82,7 @@ func launchNode(t *testing.T, cfg config.Config, auditLog *audit.Log) (string, f
 		})
 	}
 	t.Cleanup(shutdown)
+	waitReady(t, "http://"+httpAddr)
 	return "http://" + httpAddr, shutdown
 }
 

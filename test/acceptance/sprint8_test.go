@@ -84,7 +84,7 @@ func startNodeV3(t *testing.T, cfg config.Config) (string, *server.RuntimeApps) 
 		_ = httpSrv.Shutdown(ctx)
 	})
 
-	time.Sleep(50 * time.Millisecond)
+	waitReady(t, "http://"+httpAddr)
 	return "http://" + httpAddr, runtimeApps
 }
 

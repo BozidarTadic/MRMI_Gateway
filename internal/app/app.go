@@ -66,7 +66,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 			return fmt.Errorf("open bbolt store: %w", err)
 		}
 		defer s.Close()
-		logger.Info("bbolt backend", "pkg", "store", "path", dir+"/mrmi.db")
+		logger.Info("storage backend: bbolt", "pkg", "store", "path", dir+"/mrmi.db")
 		nodeStore = s
 	case "redis":
 		prefix := cfg.Storage.KeyPrefix
@@ -78,7 +78,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 			return fmt.Errorf("open redis store: %w", err)
 		}
 		defer s.Close()
-		logger.Info("redis backend", "pkg", "store", "addr", cfg.Storage.RedisURL, "prefix", prefix)
+		logger.Info("storage backend: redis", "pkg", "store", "addr", cfg.Storage.RedisURL, "prefix", prefix)
 		nodeStore = s
 	default:
 		logger.Info("using in-memory storage (no persistence)", "pkg", "store")
@@ -154,7 +154,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	var tc *transit.Cache
 	if cfg.Profile.TransitCacheTTL > 0 {
 		tc = transit.New(cfg.Profile.TransitCacheTTL)
-		logger.Info("cache enabled", "pkg", "transit", "ttl", cfg.Profile.TransitCacheTTL)
+		logger.Info("transit cache enabled", "pkg", "transit", "ttl", cfg.Profile.TransitCacheTTL)
 		go runTransitRetry(ctx, tc, dlq, auditLog, cfg)
 	}
 
@@ -184,7 +184,7 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		go func() {
 			logger.Info("serving /metrics", "pkg", "metrics", "addr", cfg.Network.MetricsAddr)
 			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Error("server error", "pkg", "metrics", "err", err)
+				logger.Error("metrics server error", "pkg", "metrics", "err", err)
 			}
 		}()
 		go func() {
@@ -395,6 +395,13 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		errCh <- grpcServer.Serve()
 	}()
 
+	logger.Info("node started",
+		"pkg", "app",
+		"node_id", cfg.Node.NodeID,
+		"grpc_addr", cfg.Network.GRPCListenAddr,
+		"http_addr", cfg.Network.HTTPListenAddr,
+	)
+
 	select {
 	case <-ctx.Done():
 		logger.Info("shutting down", "pkg", "app")
@@ -432,7 +439,7 @@ func runPeerGossip(ctx context.Context, cfg config.Config, reg *peerdiscovery.Re
 		defer cancel()
 		client, err := grpctransport.Dial(dialCtx, addr, clientTLS)
 		if err != nil {
-			logger.Error("dial failed", "pkg", "gossip", "addr", addr, "err", err)
+			logger.Error("peer gossip dial failed", "pkg", "gossip", "addr", addr, "err", err)
 			return
 		}
 		defer client.Close()
@@ -521,6 +528,7 @@ func runTransitRetry(ctx context.Context, tc *transit.Cache, dlq *delivery.DLQ, 
 			return
 		case <-ticker.C:
 			for _, e := range tc.Drain() {
+				logger.Warn("transit entry expired, moving to DLQ", "pkg", "transit", "peer", e.PeerAddr, "key", e.Env.IdempotencyKey)
 				dlq.Append(delivery.DLQEntry{Envelope: e.Env, PeerAddr: e.PeerAddr})
 			}
 		}
@@ -542,7 +550,7 @@ func runGossip(ctx context.Context, cfg config.Config, auditLog *audit.Log, clie
 				client, err := grpctransport.Dial(dialCtx, peer.Addr, clientTLS)
 				cancel()
 				if err != nil {
-					logger.Error("dial failed", "pkg", "gossip", "addr", peer.Addr, "err", err)
+					logger.Error("root hash gossip dial failed", "pkg", "gossip", "addr", peer.Addr, "err", err)
 					continue
 				}
 				_, _ = client.ShareRootHash(ctx, &grpctransport.RootHashMessage{
