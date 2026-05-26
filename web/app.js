@@ -20,7 +20,9 @@ async function api(method, path, body) {
 	if (res.status === 204) return null;
 	if (!res.ok) {
 		const text = await res.text();
-		throw new Error(text.trim() || res.statusText);
+		let msg = text.trim() || res.statusText;
+		try { const d = JSON.parse(text); if (d && d.error) msg = d.error; } catch (_) {}
+		throw new Error(`HTTP ${res.status}: ${msg}`);
 	}
 	const ct = res.headers.get('content-type') || '';
 	return ct.includes('json') ? res.json() : res.text();
@@ -63,6 +65,9 @@ function saveKey() {
 // ── Status page ──────────────────────────────────────────────────────────────
 
 async function loadStatus() {
+	document.getElementById('status-cards').innerHTML =
+		'<div class="card"><div class="value" style="color:var(--text3)">Loading…</div></div>';
+	document.getElementById('node-info-box').innerHTML = '';
 	try {
 		const s = await api('GET', '/api/v1/status');
 		document.getElementById('status-cards').innerHTML = [
@@ -84,13 +89,16 @@ async function loadStatus() {
 	} catch (e) {
 		document.getElementById('status-cards').innerHTML =
 			`<div class="card"><div class="value" style="color:var(--red)">Unreachable</div><div class="sub">${esc(e.message)}</div></div>`;
+		document.getElementById('node-info-box').innerHTML =
+			`<div style="color:var(--text3);font-size:12px;padding:4px 0">${esc(e.message)}</div>`;
 	}
 }
 
 async function loadPeers() {
+	const el = document.getElementById('peer-list');
+	el.innerHTML = '<div class="empty">Loading…</div>';
 	try {
 		const peers = await api('GET', '/api/v1/peers');
-		const el = document.getElementById('peer-list');
 		if (!peers || peers.length === 0) {
 			el.innerHTML = '<div class="empty">No peers registered</div>';
 			return;
@@ -106,7 +114,7 @@ async function loadPeers() {
 				</div>
 			</div>`).join('');
 	} catch (e) {
-		document.getElementById('peer-list').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+		el.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
 	}
 }
 
@@ -228,7 +236,9 @@ async function loadSettings() {
 		sel.value = profile;
 		prevProfile = profile;
 		onProfileChange();
-	} catch (_) {}
+	} catch (e) {
+		toast('Could not load node status: ' + e.message, true);
+	}
 	renderAllowTags();
 	renderDenyTags();
 	renderStaticPeers();
