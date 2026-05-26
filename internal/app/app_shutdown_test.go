@@ -52,7 +52,7 @@ func TestRun_GracefulShutdown(t *testing.T) {
 	for {
 		resp, err := http.Get("http://" + httpAddr + "/healthz") //nolint:noctx
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			break
 		}
 		if time.Now().After(deadline) {

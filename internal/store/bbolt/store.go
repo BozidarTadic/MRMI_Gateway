@@ -39,7 +39,7 @@ func Open(dir string) (*Store, error) {
 		}
 		return nil
 	}); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("bbolt init buckets: %w", err)
 	}
 	return &Store{db: db}, nil

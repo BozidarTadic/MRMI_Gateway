@@ -70,7 +70,7 @@ func TestConcurrentIssueResolve(t *testing.T) {
 	go func() {
 		for i := 0; i < 100; i++ {
 			tok, _ := s.Issue("app", "node", time.Minute)
-			s.Resolve(tok) //nolint:errcheck
+			_, _, _ = s.Resolve(tok)
 		}
 		close(done)
 	}()
@@ -82,7 +82,7 @@ func TestConcurrentIssueResolve(t *testing.T) {
 
 func TestPurgeRemovesExpired(t *testing.T) {
 	s := New()
-	s.Issue("app", "node", time.Millisecond) //nolint:errcheck
+	_, _ = s.Issue("app", "node", time.Millisecond)
 	time.Sleep(5 * time.Millisecond)
 	s.Purge()
 	s.mu.Lock()

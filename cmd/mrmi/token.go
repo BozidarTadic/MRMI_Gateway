@@ -87,14 +87,14 @@ func tokenIssue(w io.Writer, args []string) error {
 	}
 
 	expires := time.Unix(result.ExpiresAt, 0).UTC().Format(time.RFC3339)
-	fmt.Fprintf(w, "Token:   %s\n", result.Token)
-	fmt.Fprintf(w, "Scope:   %s\n", result.Scope)
-	fmt.Fprintf(w, "Expires: %s\n", expires)
+	_, _ = fmt.Fprintf(w, "Token:   %s\n", result.Token)
+	_, _ = fmt.Fprintf(w, "Scope:   %s\n", result.Scope)
+	_, _ = fmt.Fprintf(w, "Expires: %s\n", expires)
 	return nil
 }
 
 func usageToken(w io.Writer) {
-	fmt.Fprintf(w, `Usage:
+	_, _ = fmt.Fprintf(w, `Usage:
   mrmi token issue --url <http-addr> --api-key <key> [--scope <read|operator>] [--ttl <duration>]
 `)
 }

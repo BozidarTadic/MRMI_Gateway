@@ -22,10 +22,10 @@ func TestInit_JSONFormat(t *testing.T) {
 	logger.Init("info", "json")
 	logger.Info("test message", "pkg", "policy", "region_from", "RS")
 
-	w.Close()
+	_ = w.Close()
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var entry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
@@ -65,10 +65,10 @@ func TestInit_LevelFiltering(t *testing.T) {
 	logger.Info("should not appear either")
 	logger.Warn("this should appear")
 
-	w.Close()
+	_ = w.Close()
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	out := buf.String()
 	if out == "" {

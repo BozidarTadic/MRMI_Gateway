@@ -31,7 +31,7 @@ func (p *Publisher) Run(ctx context.Context, rootHash func() string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			fmt.Fprintf(p.out, "v=1 ts=%d root=%s node=%s law=%s\n",
+			_, _ = fmt.Fprintf(p.out, "v=1 ts=%d root=%s node=%s law=%s\n",
 				time.Now().Unix(), rootHash(), p.nodeID, p.applicableLaw)
 		}
 	}

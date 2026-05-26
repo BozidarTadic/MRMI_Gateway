@@ -179,7 +179,7 @@ func TestApps_DeleteRemovesFromList(t *testing.T) {
 	cfg.API.APIKey = "test-key"
 	base, _ := startNodeV3(t, cfg)
 
-	authReq(t, http.MethodPost, base+"/api/v1/apps/register",
+	_ = authReq(t, http.MethodPost, base+"/api/v1/apps/register",
 		map[string]any{"app_id": "delete-me"}, "test-key").Body.Close()
 
 	del := authReq(t, http.MethodDelete, base+"/api/v1/apps/delete-me", nil, "test-key")
@@ -191,7 +191,9 @@ func TestApps_DeleteRemovesFromList(t *testing.T) {
 	listResp := authReq(t, http.MethodGet, base+"/api/v1/apps", nil, "test-key")
 	defer listResp.Body.Close()
 	var apps []map[string]any
-	json.NewDecoder(listResp.Body).Decode(&apps)
+	if err := json.NewDecoder(listResp.Body).Decode(&apps); err != nil {
+		t.Fatalf("decode apps list: %v", err)
+	}
 	for _, a := range apps {
 		if a["app_id"] == "delete-me" {
 			t.Fatal("deleted app still appears in list")
@@ -375,13 +377,13 @@ func TestPeerGossip_ExchangePeers(t *testing.T) {
 	srv1, _ := grpctransport.NewServer(":0", adapter1, nil)
 	srv2, _ := grpctransport.NewServer(":0", adapter2, nil)
 
-	go srv1.Serve()
-	go srv2.Serve()
+	go func() { _ = srv1.Serve() }()
+	go func() { _ = srv2.Serve() }()
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		srv1.Shutdown(ctx)
-		srv2.Shutdown(ctx)
+		_ = srv1.Shutdown(ctx)
+		_ = srv2.Shutdown(ctx)
 	})
 
 	time.Sleep(30 * time.Millisecond)
@@ -458,13 +460,15 @@ func TestApps_RegisterDuplicate(t *testing.T) {
 		resp := authReq(t, http.MethodPost, base+"/api/v1/apps/register",
 			map[string]any{"app_id": "dup-app", "webhook_url": fmt.Sprintf("https://example.com/%d", time.Now().UnixNano())},
 			"test-key")
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 
 	listResp := authReq(t, http.MethodGet, base+"/api/v1/apps", nil, "test-key")
 	defer listResp.Body.Close()
 	var apps []map[string]any
-	json.NewDecoder(listResp.Body).Decode(&apps)
+	if err := json.NewDecoder(listResp.Body).Decode(&apps); err != nil {
+		t.Fatalf("decode apps list: %v", err)
+	}
 
 	count := 0
 	for _, a := range apps {

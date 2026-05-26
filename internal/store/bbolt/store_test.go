@@ -16,7 +16,7 @@ func openTemp(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 	return s
 }
 
@@ -30,7 +30,7 @@ func TestDedup_NewKeyNotSeen(t *testing.T) {
 
 func TestDedup_SeenWithinTTL(t *testing.T) {
 	s := openTemp(t)
-	s.Deduped("key1", time.Minute)
+	_, _ = s.Deduped("key1", time.Minute)
 	seen, err := s.Deduped("key1", time.Minute)
 	if err != nil || !seen {
 		t.Fatalf("expected true for repeated key, seen=%v err=%v", seen, err)
@@ -39,7 +39,7 @@ func TestDedup_SeenWithinTTL(t *testing.T) {
 
 func TestDedup_ExpiredKeyNotSeen(t *testing.T) {
 	s := openTemp(t)
-	s.Deduped("key1", time.Millisecond)
+	_, _ = s.Deduped("key1", time.Millisecond)
 	time.Sleep(5 * time.Millisecond)
 	seen, err := s.Deduped("key1", time.Minute)
 	if err != nil || seen {
@@ -50,8 +50,8 @@ func TestDedup_ExpiredKeyNotSeen(t *testing.T) {
 func TestDedup_PersistsAcrossReopen(t *testing.T) {
 	dir := t.TempDir()
 	s1, _ := Open(dir)
-	s1.Deduped("persistent-key", time.Hour)
-	s1.Close()
+	_, _ = s1.Deduped("persistent-key", time.Hour)
+	_ = s1.Close()
 
 	s2, err := Open(dir)
 	if err != nil {
@@ -89,7 +89,7 @@ func TestDLQ_PushListDelete(t *testing.T) {
 func TestAudit_AppendAndLatest(t *testing.T) {
 	s := openTemp(t)
 	for i := uint64(1); i <= 5; i++ {
-		s.AuditAppend(store.AuditEntry{Seq: i, Decision: "ALLOW", SenderRegion: "RS"})
+		_ = s.AuditAppend(store.AuditEntry{Seq: i, Decision: "ALLOW", SenderRegion: "RS"})
 	}
 	entries, err := s.AuditLatest(3)
 	if err != nil || len(entries) != 3 {
@@ -128,8 +128,8 @@ func TestCRL_PutGetList(t *testing.T) {
 func TestDLQ_PersistsAcrossReopen(t *testing.T) {
 	dir := t.TempDir()
 	s1, _ := Open(dir)
-	s1.DLQPush(store.DLQEntry{ID: "dlq-persist", IdempotencyKey: "env-x"})
-	s1.Close()
+	_ = s1.DLQPush(store.DLQEntry{ID: "dlq-persist", IdempotencyKey: "env-x"})
+	_ = s1.Close()
 
 	s2, _ := Open(dir)
 	defer s2.Close()
@@ -145,7 +145,7 @@ func TestOpen_CreatesDBFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Close()
+	_ = s.Close()
 	if _, err := os.Stat(filepath.Join(dir, "mrmi.db")); err != nil {
 		t.Fatal("expected mrmi.db to exist")
 	}

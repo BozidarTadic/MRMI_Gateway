@@ -122,7 +122,7 @@ func TestAuditPersistence_SurvivesRestart(t *testing.T) {
 		"recipient_region": "RU",
 		"trust_tier":       1,
 	})
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Explicitly stop the node and close the store before reopening.
 	// bbolt is a single-writer database; it must be closed before a second Open.

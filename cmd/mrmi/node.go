@@ -105,14 +105,14 @@ func nodeStatus(w io.Writer, opts nodeOpts) error {
 		return fmt.Errorf("parse response: %w", err)
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(tw, "node_id:\t%s\n", s.NodeID)
-	fmt.Fprintf(tw, "region:\t%s\n", s.Region)
-	fmt.Fprintf(tw, "node_scope:\t%s\n", s.NodeScope)
-	fmt.Fprintf(tw, "profile:\t%s\n", s.Profile)
-	fmt.Fprintf(tw, "applicable_law:\t%s\n", s.ApplicableLaw)
-	fmt.Fprintf(tw, "app_version:\t%s\n", s.AppVersion)
-	fmt.Fprintf(tw, "adr_version:\t%s\n", s.ADRVersion)
-	fmt.Fprintf(tw, "uptime:\t%s\n", formatUptime(s.UptimeSecs))
+	_, _ = fmt.Fprintf(tw,"node_id:\t%s\n", s.NodeID)
+	_, _ = fmt.Fprintf(tw,"region:\t%s\n", s.Region)
+	_, _ = fmt.Fprintf(tw,"node_scope:\t%s\n", s.NodeScope)
+	_, _ = fmt.Fprintf(tw,"profile:\t%s\n", s.Profile)
+	_, _ = fmt.Fprintf(tw,"applicable_law:\t%s\n", s.ApplicableLaw)
+	_, _ = fmt.Fprintf(tw,"app_version:\t%s\n", s.AppVersion)
+	_, _ = fmt.Fprintf(tw,"adr_version:\t%s\n", s.ADRVersion)
+	_, _ = fmt.Fprintf(tw,"uptime:\t%s\n", formatUptime(s.UptimeSecs))
 	return tw.Flush()
 }
 
@@ -140,9 +140,9 @@ func nodePeers(w io.Writer, opts nodeOpts) error {
 		return fmt.Errorf("parse response: %w", err)
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(tw, "NODE_ID\tADDR\tSCOPE\tREGION\tSOURCE\n")
+	_, _ = fmt.Fprintf(tw,"NODE_ID\tADDR\tSCOPE\tREGION\tSOURCE\n")
 	for _, p := range peers {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", p.NodeID, p.Addr, p.NodeScope, p.Region, p.Source)
+		_, _ = fmt.Fprintf(tw,"%s\t%s\t%s\t%s\t%s\n", p.NodeID, p.Addr, p.NodeScope, p.Region, p.Source)
 	}
 	return tw.Flush()
 }
@@ -174,13 +174,13 @@ func nodeDLQ(w io.Writer, opts nodeOpts) error {
 		return fmt.Errorf("parse response: %w", err)
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(tw, "INDEX\tENVELOPE_ID\tPEER_ADDR\tATTEMPTS\tFIRST_SEEN\tLAST_ERR\n")
+	_, _ = fmt.Fprintf(tw,"INDEX\tENVELOPE_ID\tPEER_ADDR\tATTEMPTS\tFIRST_SEEN\tLAST_ERR\n")
 	for _, e := range entries {
 		firstSeen := "-"
 		if e.FirstSeenUnix > 0 {
 			firstSeen = time.Unix(e.FirstSeenUnix, 0).UTC().Format(time.RFC3339)
 		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%d\t%s\t%s\n",
+		_, _ = fmt.Fprintf(tw,"%d\t%s\t%s\t%d\t%s\t%s\n",
 			e.Index, e.EnvelopeID, e.PeerAddr, e.Attempts, firstSeen, e.LastError)
 	}
 	return tw.Flush()
@@ -207,9 +207,9 @@ func nodeApps(w io.Writer, opts nodeOpts) error {
 		return fmt.Errorf("parse response: %w", err)
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(tw, "APP_ID\tWEBHOOK_URL\n")
+	_, _ = fmt.Fprintf(tw,"APP_ID\tWEBHOOK_URL\n")
 	for _, a := range apps {
-		fmt.Fprintf(tw, "%s\t%s\n", a.AppID, a.WebhookURL)
+		_, _ = fmt.Fprintf(tw,"%s\t%s\n", a.AppID, a.WebhookURL)
 	}
 	return tw.Flush()
 }
@@ -237,7 +237,7 @@ func trimNewline(b []byte) string {
 }
 
 func usageNode(w io.Writer) {
-	fmt.Fprintf(w, `Usage:
+	_, _ = fmt.Fprintf(w, `Usage:
   mrmi node status --url <http-addr> [--token <jwt>] [--api-key <key>]
   mrmi node peers  --url <http-addr> [--token <jwt>] [--api-key <key>]
   mrmi node dlq    --url <http-addr> [--token <jwt>] [--api-key <key>]

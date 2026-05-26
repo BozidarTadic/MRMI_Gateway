@@ -302,7 +302,7 @@ func parseTXTFields(txt string) map[string]string {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintf(w, `mrmi — MRMI Gateway operator CLI
+	_, _ = fmt.Fprintf(w,`mrmi — MRMI Gateway operator CLI
 
 Usage:
   mrmi keygen --output <path>
@@ -319,7 +319,7 @@ Usage:
 }
 
 func usageAuditVerify(w io.Writer) {
-	fmt.Fprintf(w, `Usage:
+	_, _ = fmt.Fprintf(w,`Usage:
   mrmi audit verify --local --log <path>
   mrmi audit verify --dns --node <node_id>
   mrmi audit verify --https --url <url> [--pubkey <path>]

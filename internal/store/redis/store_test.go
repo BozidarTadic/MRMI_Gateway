@@ -21,7 +21,7 @@ func newTestStore(t *testing.T) (*Store, *miniredis.Miniredis) {
 		client: goredis.NewClient(&goredis.Options{Addr: mr.Addr()}),
 		prefix: "test:",
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 	return s, mr
 }
 
@@ -35,7 +35,7 @@ func TestDedup_NewKeyNotSeen(t *testing.T) {
 
 func TestDedup_SeenWithinTTL(t *testing.T) {
 	s, _ := newTestStore(t)
-	s.Deduped("key1", time.Minute)
+	_, _ = s.Deduped("key1", time.Minute)
 	seen, err := s.Deduped("key1", time.Minute)
 	if err != nil || !seen {
 		t.Fatalf("expected true for repeated key, seen=%v err=%v", seen, err)
@@ -44,7 +44,7 @@ func TestDedup_SeenWithinTTL(t *testing.T) {
 
 func TestDedup_ExpiredKeyNotSeen(t *testing.T) {
 	s, mr := newTestStore(t)
-	s.Deduped("key1", time.Second)
+	_, _ = s.Deduped("key1", time.Second)
 	mr.FastForward(2 * time.Second)
 	seen, err := s.Deduped("key1", time.Minute)
 	if err != nil || seen {
@@ -77,7 +77,7 @@ func TestDLQ_PushListDelete(t *testing.T) {
 func TestAudit_AppendAndLatest(t *testing.T) {
 	s, _ := newTestStore(t)
 	for i := uint64(1); i <= 5; i++ {
-		s.AuditAppend(store.AuditEntry{Seq: i, Decision: "ALLOW", SenderRegion: "RS"})
+		_ = s.AuditAppend(store.AuditEntry{Seq: i, Decision: "ALLOW", SenderRegion: "RS"})
 	}
 	entries, err := s.AuditLatest(3)
 	if err != nil || len(entries) != 3 {
@@ -121,7 +121,7 @@ func TestKeyPrefixIsolation(t *testing.T) {
 	defer s1.Close()
 	defer s2.Close()
 
-	s1.DLQPush(store.DLQEntry{ID: "e1", IdempotencyKey: "k1"})
+	_ = s1.DLQPush(store.DLQEntry{ID: "e1", IdempotencyKey: "k1"})
 	list, _ := s2.DLQList()
 	if len(list) != 0 {
 		t.Fatal("key prefix isolation failed: node-b sees node-a's DLQ")

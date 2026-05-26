@@ -64,12 +64,12 @@ func (r *Registry) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 
-		fmt.Fprintf(w, "# HELP mrmi_envelope_allow_total Envelopes with ALLOW decision\n")
-		fmt.Fprintf(w, "# TYPE mrmi_envelope_allow_total counter\n")
-		fmt.Fprintf(w, "mrmi_envelope_allow_total %d\n\n", r.allowTotal.Load())
+		_, _ = fmt.Fprintf(w,"# HELP mrmi_envelope_allow_total Envelopes with ALLOW decision\n")
+		_, _ = fmt.Fprintf(w,"# TYPE mrmi_envelope_allow_total counter\n")
+		_, _ = fmt.Fprintf(w,"mrmi_envelope_allow_total %d\n\n", r.allowTotal.Load())
 
-		fmt.Fprintf(w, "# HELP mrmi_envelope_deny_total Envelopes with DENY decision\n")
-		fmt.Fprintf(w, "# TYPE mrmi_envelope_deny_total counter\n")
+		_, _ = fmt.Fprintf(w,"# HELP mrmi_envelope_deny_total Envelopes with DENY decision\n")
+		_, _ = fmt.Fprintf(w,"# TYPE mrmi_envelope_deny_total counter\n")
 		r.denyMu.Lock()
 		denyCopy := make(map[string]int64, len(r.denyByReason))
 		for reason, c := range r.denyByReason {
@@ -77,32 +77,32 @@ func (r *Registry) Handler() http.Handler {
 		}
 		r.denyMu.Unlock()
 		for reason, n := range denyCopy {
-			fmt.Fprintf(w, "mrmi_envelope_deny_total{reason=%q} %d\n", reason, n)
+			_, _ = fmt.Fprintf(w,"mrmi_envelope_deny_total{reason=%q} %d\n", reason, n)
 		}
-		fmt.Fprintf(w, "\n")
+		_, _ = fmt.Fprintf(w,"\n")
 
-		fmt.Fprintf(w, "# HELP mrmi_envelope_duplicate_total Envelopes rejected as duplicates\n")
-		fmt.Fprintf(w, "# TYPE mrmi_envelope_duplicate_total counter\n")
-		fmt.Fprintf(w, "mrmi_envelope_duplicate_total %d\n\n", r.duplicateTotal.Load())
+		_, _ = fmt.Fprintf(w,"# HELP mrmi_envelope_duplicate_total Envelopes rejected as duplicates\n")
+		_, _ = fmt.Fprintf(w,"# TYPE mrmi_envelope_duplicate_total counter\n")
+		_, _ = fmt.Fprintf(w,"mrmi_envelope_duplicate_total %d\n\n", r.duplicateTotal.Load())
 
 		dlqLen := readGauge(r.getDLQLen)
-		fmt.Fprintf(w, "# HELP mrmi_dlq_len Current DLQ depth\n")
-		fmt.Fprintf(w, "# TYPE mrmi_dlq_len gauge\n")
-		fmt.Fprintf(w, "mrmi_dlq_len %d\n\n", dlqLen)
+		_, _ = fmt.Fprintf(w,"# HELP mrmi_dlq_len Current DLQ depth\n")
+		_, _ = fmt.Fprintf(w,"# TYPE mrmi_dlq_len gauge\n")
+		_, _ = fmt.Fprintf(w,"mrmi_dlq_len %d\n\n", dlqLen)
 
 		transitLen := readGauge(r.getTransitLen)
-		fmt.Fprintf(w, "# HELP mrmi_transit_cache_len Current transit cache depth\n")
-		fmt.Fprintf(w, "# TYPE mrmi_transit_cache_len gauge\n")
-		fmt.Fprintf(w, "mrmi_transit_cache_len %d\n\n", transitLen)
+		_, _ = fmt.Fprintf(w,"# HELP mrmi_transit_cache_len Current transit cache depth\n")
+		_, _ = fmt.Fprintf(w,"# TYPE mrmi_transit_cache_len gauge\n")
+		_, _ = fmt.Fprintf(w,"mrmi_transit_cache_len %d\n\n", transitLen)
 
-		fmt.Fprintf(w, "# HELP mrmi_rate_limit_deny_total Discovery requests rejected by rate limiter\n")
-		fmt.Fprintf(w, "# TYPE mrmi_rate_limit_deny_total counter\n")
-		fmt.Fprintf(w, "mrmi_rate_limit_deny_total %d\n\n", r.rateLimitDenyTotal.Load())
+		_, _ = fmt.Fprintf(w,"# HELP mrmi_rate_limit_deny_total Discovery requests rejected by rate limiter\n")
+		_, _ = fmt.Fprintf(w,"# TYPE mrmi_rate_limit_deny_total counter\n")
+		_, _ = fmt.Fprintf(w,"mrmi_rate_limit_deny_total %d\n\n", r.rateLimitDenyTotal.Load())
 
 		peerCount := readGauge(r.getPeerCount)
-		fmt.Fprintf(w, "# HELP mrmi_peer_count Live peers in registry\n")
-		fmt.Fprintf(w, "# TYPE mrmi_peer_count gauge\n")
-		fmt.Fprintf(w, "mrmi_peer_count %d\n", peerCount)
+		_, _ = fmt.Fprintf(w,"# HELP mrmi_peer_count Live peers in registry\n")
+		_, _ = fmt.Fprintf(w,"# TYPE mrmi_peer_count gauge\n")
+		_, _ = fmt.Fprintf(w,"mrmi_peer_count %d\n", peerCount)
 	})
 }
 

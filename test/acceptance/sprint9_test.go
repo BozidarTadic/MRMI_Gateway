@@ -213,7 +213,7 @@ func TestJWT_IssueToken_RequiresAPIKey(t *testing.T) {
 
 	resp := authReq(t, http.MethodPost, base+"/api/v1/token",
 		map[string]any{"scope": "read", "ttl_minutes": 30}, "")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401 without API key, got %d", resp.StatusCode)
 	}
@@ -314,7 +314,7 @@ func TestJWT_IssueToken_503WhenJWTSecretMissing(t *testing.T) {
 
 	resp := authReq(t, http.MethodPost, base+"/api/v1/token",
 		map[string]any{"scope": "read"}, "secret")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 when JWT secret not set, got %d", resp.StatusCode)
 	}
