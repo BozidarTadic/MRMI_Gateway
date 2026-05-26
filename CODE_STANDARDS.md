@@ -15,6 +15,17 @@
 
 **Rule:** packages in `internal/transport/grpc/` must not import `internal/core` directly; the adapter receives a `GatewayService` interface. This keeps the transport layer testable without constructing a real core.
 
+## Architecture boundary checks
+
+Boundary rules are enforced by `go test ./test/archcheck/...`. The checks use `go list` (not fragile string matching) to verify direct imports of key packages. Add new rules there when new layers are introduced.
+
+| Rule | Enforced boundary |
+|------|-------------------|
+| `TestCoreBoundary` | `internal/core` must not import gRPC, proto, `internal/server`, `internal/transport`, or `internal/app` |
+| `TestGRPCTransportBoundary` | `internal/transport/grpc` must not import `internal/server` or `internal/app` |
+| `TestGatewayBinaryBoundary` | `cmd/mrmi-gateway` may only import `internal/app`, `internal/config`, and `internal/version` from internal packages |
+| `TestCLIBoundary` | `cmd/mrmi` must not import `internal/app`, `internal/server`, `internal/transport`, `internal/core`, or `internal/delivery` |
+
 ## Naming
 
 - No stutter: `dedup.Index` not `dedup.DedupIndex`.
