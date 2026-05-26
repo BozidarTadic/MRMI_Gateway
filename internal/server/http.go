@@ -176,6 +176,15 @@ func checkAuth(apiKey, jwtSecret, requiredScope string, r *http.Request) bool {
 	return false
 }
 
+// writeJSONError writes a JSON error envelope {"error": msg} with the given
+// status code and Content-Type: application/json. It has the same call
+// signature as http.Error so callers are mechanically consistent.
+func writeJSONError(w http.ResponseWriter, msg string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
 func corsHeaders(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -195,7 +204,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 				return
 			}
 			if !checkAuth(cfg.API.APIKey, cfg.API.JWTSecret, "read", r) {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeJSONError(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			h(w, r)
@@ -210,7 +219,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 				return
 			}
 			if !checkAuth(cfg.API.APIKey, cfg.API.JWTSecret, "operator", r) {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeJSONError(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			h(w, r)
@@ -234,7 +243,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Engine == nil {
-			http.Error(w, "policy engine not ready", http.StatusServiceUnavailable)
+			writeJSONError(w, "policy engine not ready", http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -309,7 +318,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("GET /api/v1/audit/latest", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Audit == nil {
-			http.Error(w, "audit log not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "audit log not available", http.StatusServiceUnavailable)
 			return
 		}
 		n := 20
@@ -324,7 +333,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("POST /api/v1/envelopes", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Gateway == nil {
-			http.Error(w, "gateway not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "gateway not available", http.StatusServiceUnavailable)
 			return
 		}
 		var req struct {
@@ -336,11 +345,11 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 			SenderIdentity  []byte `json:"sender_identity,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+			writeJSONError(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 		if req.IdempotencyKey == "" {
-			http.Error(w, "idempotency_key is required", http.StatusBadRequest)
+			writeJSONError(w, "idempotency_key is required", http.StatusBadRequest)
 			return
 		}
 		resp, err := deps.Gateway.SendEnvelope(r.Context(), core.SendRequest{
@@ -355,7 +364,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 			},
 		})
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeJSONError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -413,12 +422,12 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("DELETE /api/v1/dlq/{index}", func(w http.ResponseWriter, r *http.Request) {
 		if deps.DLQ == nil {
-			http.Error(w, "dlq not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "dlq not available", http.StatusServiceUnavailable)
 			return
 		}
 		idx, err := strconv.Atoi(r.PathValue("index"))
 		if err != nil || idx < 0 {
-			http.Error(w, "invalid index", http.StatusBadRequest)
+			writeJSONError(w, "invalid index", http.StatusBadRequest)
 			return
 		}
 		deps.DLQ.Remove(idx)
@@ -427,23 +436,23 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("POST /api/v1/dlq/{index}/replay", func(w http.ResponseWriter, r *http.Request) {
 		if deps.DLQ == nil || deps.Gateway == nil {
-			http.Error(w, "dlq or gateway not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "dlq or gateway not available", http.StatusServiceUnavailable)
 			return
 		}
 		idx, err := strconv.Atoi(r.PathValue("index"))
 		if err != nil || idx < 0 {
-			http.Error(w, "invalid index", http.StatusBadRequest)
+			writeJSONError(w, "invalid index", http.StatusBadRequest)
 			return
 		}
 		entries := deps.DLQ.Entries()
 		if idx >= len(entries) {
-			http.Error(w, "index out of range", http.StatusNotFound)
+			writeJSONError(w, "index out of range", http.StatusNotFound)
 			return
 		}
 		entry := entries[idx]
 		resp, err := deps.Gateway.SendEnvelope(r.Context(), core.SendRequest{Envelope: entry.Envelope})
 		if err != nil {
-			http.Error(w, fmt.Sprintf("replay failed: %v", err), http.StatusInternalServerError)
+			writeJSONError(w, fmt.Sprintf("replay failed: %v", err), http.StatusInternalServerError)
 			return
 		}
 		deps.DLQ.Remove(idx)
@@ -486,7 +495,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("POST /api/v1/crl", func(w http.ResponseWriter, r *http.Request) {
 		if deps.CRL == nil {
-			http.Error(w, "crl store not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "crl store not available", http.StatusServiceUnavailable)
 			return
 		}
 		var req struct {
@@ -495,16 +504,16 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 			SignatureB64 string `json:"signature_b64"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+			writeJSONError(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 		if req.NodeID == "" || req.SignatureB64 == "" {
-			http.Error(w, "node_id and signature_b64 are required", http.StatusBadRequest)
+			writeJSONError(w, "node_id and signature_b64 are required", http.StatusBadRequest)
 			return
 		}
 		sig, err := base64.StdEncoding.DecodeString(req.SignatureB64)
 		if err != nil {
-			http.Error(w, "invalid signature_b64 encoding", http.StatusBadRequest)
+			writeJSONError(w, "invalid signature_b64 encoding", http.StatusBadRequest)
 			return
 		}
 		deps.CRL.Revoke(req.NodeID, req.Reason, sig)
@@ -520,7 +529,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("GET /api/v1/stream", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Inbox == nil {
-			http.Error(w, "inbox not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "inbox not available", http.StatusServiceUnavailable)
 			return
 		}
 		flusher, canFlush := w.(http.Flusher)
@@ -562,8 +571,12 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 			NodeScope string `json:"node_scope"`
 			Region    string `json:"region"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Addr == "" {
-			http.Error(w, "addr is required", http.StatusBadRequest)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSONError(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if req.Addr == "" {
+			writeJSONError(w, "addr is required", http.StatusBadRequest)
 			return
 		}
 		if deps.RuntimePeers != nil {
@@ -600,12 +613,12 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("POST /api/v1/dlq/{index}/discard", auth(func(w http.ResponseWriter, r *http.Request) {
 		if deps.DLQ == nil {
-			http.Error(w, "dlq not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "dlq not available", http.StatusServiceUnavailable)
 			return
 		}
 		idx, err := strconv.Atoi(r.PathValue("index"))
 		if err != nil || idx < 0 {
-			http.Error(w, "invalid index", http.StatusBadRequest)
+			writeJSONError(w, "invalid index", http.StatusBadRequest)
 			return
 		}
 		deps.DLQ.Remove(idx)
@@ -614,11 +627,11 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("POST /api/v1/config/reload", auth(func(w http.ResponseWriter, _ *http.Request) {
 		if deps.OnConfigReload == nil {
-			http.Error(w, "config reload not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "config reload not available", http.StatusServiceUnavailable)
 			return
 		}
 		if err := deps.OnConfigReload(); err != nil {
-			http.Error(w, fmt.Sprintf("reload failed: %v", err), http.StatusInternalServerError)
+			writeJSONError(w, fmt.Sprintf("reload failed: %v", err), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -627,7 +640,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("POST /api/v1/revoke/{node_id}", auth(func(w http.ResponseWriter, r *http.Request) {
 		if deps.CRL == nil {
-			http.Error(w, "crl store not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "crl store not available", http.StatusServiceUnavailable)
 			return
 		}
 		nodeID := r.PathValue("node_id")
@@ -636,12 +649,12 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 			SignatureB64 string `json:"signature_b64"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SignatureB64 == "" {
-			http.Error(w, "reason and signature_b64 required", http.StatusBadRequest)
+			writeJSONError(w, "reason and signature_b64 required", http.StatusBadRequest)
 			return
 		}
 		sig, err := base64.StdEncoding.DecodeString(req.SignatureB64)
 		if err != nil {
-			http.Error(w, "invalid signature_b64", http.StatusBadRequest)
+			writeJSONError(w, "invalid signature_b64", http.StatusBadRequest)
 			return
 		}
 		deps.CRL.Revoke(nodeID, req.Reason, sig)
@@ -672,7 +685,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("POST /api/v1/connect", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Registry == nil {
-			http.Error(w, "registry not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "registry not available", http.StatusServiceUnavailable)
 			return
 		}
 		var req struct {
@@ -681,7 +694,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 			RequesterRegion string `json:"requester_region"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.OpaqueToken == "" {
-			http.Error(w, "opaque_token required", http.StatusBadRequest)
+			writeJSONError(w, "opaque_token required", http.StatusBadRequest)
 			return
 		}
 		result := deps.Registry.Connect(req.OpaqueToken, req.RequesterID, req.RequesterRegion)
@@ -698,16 +711,16 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("PUT /api/v1/config", authOp(func(w http.ResponseWriter, r *http.Request) {
 		if deps.OnConfigSave == nil {
-			http.Error(w, "config save not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "config save not available", http.StatusServiceUnavailable)
 			return
 		}
 		var incoming config.Config
 		if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
-			http.Error(w, "invalid config JSON: "+err.Error(), http.StatusBadRequest)
+			writeJSONError(w, "invalid config JSON: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 		if err := deps.OnConfigSave(incoming); err != nil {
-			http.Error(w, "config save failed: "+err.Error(), http.StatusBadRequest)
+			writeJSONError(w, "config save failed: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -739,7 +752,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("POST /api/v1/apps/register", authOp(func(w http.ResponseWriter, r *http.Request) {
 		if deps.RuntimeApps == nil {
-			http.Error(w, "app registry not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "app registry not available", http.StatusServiceUnavailable)
 			return
 		}
 		var req struct {
@@ -748,7 +761,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 			WebhookSecret string `json:"webhook_secret"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AppID == "" {
-			http.Error(w, "app_id required", http.StatusBadRequest)
+			writeJSONError(w, "app_id required", http.StatusBadRequest)
 			return
 		}
 		apiKey := uuid.NewString()
@@ -765,12 +778,12 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 
 	mux.HandleFunc("DELETE /api/v1/apps/{app_id}", authOp(func(w http.ResponseWriter, r *http.Request) {
 		if deps.RuntimeApps == nil {
-			http.Error(w, "app registry not available", http.StatusServiceUnavailable)
+			writeJSONError(w, "app registry not available", http.StatusServiceUnavailable)
 			return
 		}
 		appID := r.PathValue("app_id")
 		if !deps.RuntimeApps.Delete(appID) {
-			http.Error(w, "app not found", http.StatusNotFound)
+			writeJSONError(w, "app not found", http.StatusNotFound)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -779,11 +792,11 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 	// POST /api/v1/token — issue a short-lived JWT (requires API key auth).
 	mux.HandleFunc("POST /api/v1/token", func(w http.ResponseWriter, r *http.Request) {
 		if !checkAuth(cfg.API.APIKey, "", "read", r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			writeJSONError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		if cfg.API.JWTSecret == "" {
-			http.Error(w, "JWT not configured on this node", http.StatusServiceUnavailable)
+			writeJSONError(w, "JWT not configured on this node", http.StatusServiceUnavailable)
 			return
 		}
 		var req struct {
@@ -791,7 +804,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 			TTLMinutes int    `json:"ttl_minutes"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+			writeJSONError(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 		if req.Scope != "read" && req.Scope != "operator" {
@@ -810,7 +823,7 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		signed, err := token.SignedString([]byte(cfg.API.JWTSecret))
 		if err != nil {
-			http.Error(w, "token signing failed", http.StatusInternalServerError)
+			writeJSONError(w, "token signing failed", http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

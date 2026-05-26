@@ -53,6 +53,12 @@ func apiGet(opts nodeOpts, path string) ([]byte, error) {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		var errBody struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(body, &errBody) == nil && errBody.Error != "" {
+			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, errBody.Error)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, trimNewline(body))
 	}
 	return body, nil
