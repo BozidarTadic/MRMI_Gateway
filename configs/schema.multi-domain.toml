@@ -1,0 +1,79 @@
+# Schema Registry — multi-domain node
+#
+# Enables messaging (default), ISO 20022 (financial), and a custom
+# government document exchange adapter registered by the operator.
+# See ADR-015 Appendix C.3.
+
+[node]
+node_id         = "rs-multi-node-01"
+node_scope      = "regional"
+region          = "RS"
+operator_id     = "example-multi-operator"
+policy_version  = "0.1.0"
+applicable_law  = "RS-GDPR"
+signed_by       = "ed25519:REPLACE_ME"
+log_level       = "info"
+log_format      = "json"
+
+[profile]
+name            = "balanced"
+
+[policy.outbound]
+allow_to        = ["RU", "BY", "KZ", "AM"]
+store_locally   = true
+
+[policy.inbound]
+min_trust_tier  = 0
+
+[policy.audit]
+log_all_decisions   = true
+log_backend         = "local-merkle"
+export_to_operator  = false
+dns_txt_publish     = true
+dns_txt_interval_s  = 21600
+https_well_known    = true
+
+# Financial messages: regional nodes only, declared jurisdictions.
+# Government documents: regional nodes only (custom adapter).
+[policy.jurisdiction_isolation]
+
+[[policy.jurisdiction_isolation.rules]]
+schema_type         = "iso20022"
+allow_tiers         = ["regional"]
+allow_jurisdictions = ["RU", "RS", "BY", "KZ", "AM"]
+require_profile     = "strict"
+
+[[policy.jurisdiction_isolation.rules]]
+schema_type         = "custom:gov-rs-doc-exchange"
+allow_tiers         = ["regional"]
+allow_jurisdictions = ["RS"]
+
+[[policy.jurisdiction_isolation.rules]]
+schema_type         = "messaging"
+allow_tiers         = ["regional", "alliance", "global"]
+
+[network]
+grpc_listen_addr = "0.0.0.0:7777"
+http_listen_addr = "0.0.0.0:8080"
+metrics_addr     = "0.0.0.0:9090"
+
+[schema_registry]
+
+[[schema_registry.adapters]]
+type    = "messaging"
+version = "1.0.0"
+enabled = true
+
+[[schema_registry.adapters]]
+type    = "iso20022"
+version = "1.0.0"
+enabled = true
+
+[[schema_registry.adapters]]
+type                = "custom:gov-rs-doc-exchange"
+version             = "1.0.0"
+enabled             = true
+description         = "Government document exchange — RS Ministry of Interior"
+jurisdiction_policy = "strict"
+allow_tiers         = ["regional"]
+contact             = "ops@gov.rs"

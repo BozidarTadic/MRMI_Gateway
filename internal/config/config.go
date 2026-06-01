@@ -12,14 +12,31 @@ import (
 )
 
 type Config struct {
-	Node    NodeConfig
-	Profile ProfileConfig
-	Policy  PolicyConfig
-	Network NetworkConfig
-	TLS     TLSConfig
-	API     APIConfig
-	Storage StorageConfig
-	Apps    map[string]AppConfig
+	Node           NodeConfig
+	Profile        ProfileConfig
+	Policy         PolicyConfig
+	Network        NetworkConfig
+	TLS            TLSConfig
+	API            APIConfig
+	Storage        StorageConfig
+	SchemaRegistry SchemaRegistryConfig
+	Apps           map[string]AppConfig
+}
+
+// SchemaRegistryConfig lists the domain adapters active on this node.
+type SchemaRegistryConfig struct {
+	Adapters []AdapterConfig
+}
+
+// AdapterConfig registers a single domain adapter (built-in or custom).
+type AdapterConfig struct {
+	Type               string   // "messaging" | "iso20022" | "hl7fhir" | "edifact" | "custom:<id>"
+	Version            string   // semver
+	Enabled            bool
+	Description        string
+	JurisdictionPolicy string   // "strict" | "balanced" | "performance"; empty = inherit node profile
+	AllowTiers         []string // node tiers allowed for this schema type; empty = unrestricted
+	Contact            string   // operator contact (custom adapters)
 }
 
 // StorageConfig selects the persistence backend for dedup, DLQ, CRL, and audit.
@@ -88,12 +105,27 @@ type ProfileConfig struct {
 }
 
 type PolicyConfig struct {
-	Outbound  OutboundPolicy
-	Inbound   InboundPolicy
-	Audit     AuditPolicy
-	Routing   RoutingPolicy
-	Discovery DiscoveryPolicy
-	Connect   ConnectPolicy
+	Outbound             OutboundPolicy
+	Inbound              InboundPolicy
+	Audit                AuditPolicy
+	Routing              RoutingPolicy
+	Discovery            DiscoveryPolicy
+	Connect              ConnectPolicy
+	JurisdictionIsolation JurisdictionIsolationConfig
+}
+
+// JurisdictionIsolationConfig restricts which node tiers and jurisdictions a
+// schema type may transit. Rules are evaluated in order; first match wins.
+type JurisdictionIsolationConfig struct {
+	Rules []JurisdictionIsolationRule
+}
+
+// JurisdictionIsolationRule matches a schema_type and applies tier/jurisdiction constraints.
+type JurisdictionIsolationRule struct {
+	SchemaType         string
+	AllowTiers         []string // e.g. ["regional"]; empty = all tiers allowed
+	AllowJurisdictions []string // e.g. ["RU","RS","BY"]; empty = all jurisdictions allowed
+	RequireProfile     string   // e.g. "strict"; empty = no profile constraint
 }
 
 // DiscoveryPolicy controls cross-app discovery isolation.
@@ -253,7 +285,39 @@ func (c Config) Validate() error {
 		}
 	}
 
+	for i, a := range c.SchemaRegistry.Adapters {
+		if strings.TrimSpace(a.Type) == "" {
+			return fmt.Errorf("schema_registry.adapters[%d].type is required", i)
+		}
+		if !isValidSchemaType(a.Type) {
+			return fmt.Errorf("schema_registry.adapters[%d].type %q is invalid: must be messaging, iso20022, hl7fhir, edifact, or custom:<id>", i, a.Type)
+		}
+		if strings.TrimSpace(a.Version) == "" {
+			return fmt.Errorf("schema_registry.adapters[%d].version is required", i)
+		}
+	}
+
+	for i, rule := range c.Policy.JurisdictionIsolation.Rules {
+		if strings.TrimSpace(rule.SchemaType) == "" {
+			return fmt.Errorf("policy.jurisdiction_isolation.rules[%d].schema_type is required", i)
+		}
+		for _, tier := range rule.AllowTiers {
+			if tier != "regional" && tier != "alliance" && tier != "global" {
+				return fmt.Errorf("policy.jurisdiction_isolation.rules[%d].allow_tiers: %q is not a valid tier", i, tier)
+			}
+		}
+	}
+
 	return nil
+}
+
+// isValidSchemaType reports whether s is a recognised schema type.
+func isValidSchemaType(s string) bool {
+	switch s {
+	case "messaging", "iso20022", "hl7fhir", "edifact":
+		return true
+	}
+	return strings.HasPrefix(s, "custom:")
 }
 
 // rawTOML mirrors the TOML file structure and is decoded directly by the library.
@@ -317,6 +381,14 @@ type rawTOML struct {
 			AutoAccept   string   `toml:"auto_accept"`
 			TrustedNodes []string `toml:"trusted_nodes"`
 		} `toml:"connect"`
+		JurisdictionIsolation struct {
+			Rules []struct {
+				SchemaType         string   `toml:"schema_type"`
+				AllowTiers         []string `toml:"allow_tiers"`
+				AllowJurisdictions []string `toml:"allow_jurisdictions"`
+				RequireProfile     string   `toml:"require_profile"`
+			} `toml:"rules"`
+		} `toml:"jurisdiction_isolation"`
 	} `toml:"policy"`
 
 	Network struct {
@@ -367,6 +439,18 @@ type rawTOML struct {
 			Region      string `toml:"region"`
 		} `toml:"users"`
 	} `toml:"apps"`
+
+	SchemaRegistry struct {
+		Adapters []struct {
+			Type               string   `toml:"type"`
+			Version            string   `toml:"version"`
+			Enabled            *bool    `toml:"enabled"`
+			Description        string   `toml:"description"`
+			JurisdictionPolicy string   `toml:"jurisdiction_policy"`
+			AllowTiers         []string `toml:"allow_tiers"`
+			Contact            string   `toml:"contact"`
+		} `toml:"adapters"`
+	} `toml:"schema_registry"`
 }
 
 func (r rawTOML) profileName() string {
@@ -580,5 +664,37 @@ func (r rawTOML) apply(cfg *Config) {
 			}
 			cfg.Apps[appID] = ac
 		}
+	}
+
+	if len(r.SchemaRegistry.Adapters) > 0 {
+		cfg.SchemaRegistry.Adapters = make([]AdapterConfig, 0, len(r.SchemaRegistry.Adapters))
+		for _, a := range r.SchemaRegistry.Adapters {
+			enabled := true
+			if a.Enabled != nil {
+				enabled = *a.Enabled
+			}
+			cfg.SchemaRegistry.Adapters = append(cfg.SchemaRegistry.Adapters, AdapterConfig{
+				Type:               a.Type,
+				Version:            a.Version,
+				Enabled:            enabled,
+				Description:        a.Description,
+				JurisdictionPolicy: a.JurisdictionPolicy,
+				AllowTiers:         a.AllowTiers,
+				Contact:            a.Contact,
+			})
+		}
+	}
+
+	if len(r.Policy.JurisdictionIsolation.Rules) > 0 {
+		rules := make([]JurisdictionIsolationRule, 0, len(r.Policy.JurisdictionIsolation.Rules))
+		for _, rule := range r.Policy.JurisdictionIsolation.Rules {
+			rules = append(rules, JurisdictionIsolationRule{
+				SchemaType:         rule.SchemaType,
+				AllowTiers:         rule.AllowTiers,
+				AllowJurisdictions: rule.AllowJurisdictions,
+				RequireProfile:     rule.RequireProfile,
+			})
+		}
+		cfg.Policy.JurisdictionIsolation.Rules = rules
 	}
 }

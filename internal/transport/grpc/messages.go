@@ -14,6 +14,8 @@ type Envelope struct {
 	Timestamp         int64  `json:"timestamp"`
 	Signature         []byte `json:"signature,omitempty"`
 	IsDummy           bool   `json:"is_dummy,omitempty"`
+	SchemaType        string `json:"schema_type,omitempty"`
+	SchemaVersion     string `json:"schema_version,omitempty"`
 }
 
 type SendEnvelopeRequest struct {

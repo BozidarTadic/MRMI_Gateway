@@ -43,6 +43,8 @@ type Envelope struct {
 	Timestamp         int64
 	Signature         []byte
 	IsDummy           bool
+	SchemaType        string // "messaging" | "iso20022" | "hl7fhir" | "edifact" | "custom:<id>"
+	SchemaVersion     string // semver e.g. "1.0.0"
 }
 
 type SendRequest struct {

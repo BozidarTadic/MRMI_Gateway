@@ -1,0 +1,64 @@
+# Schema Registry — financial corridor (ISO 20022)
+#
+# Enables the iso20022 adapter with jurisdiction isolation:
+# payments may only transit regional nodes in declared jurisdictions.
+# See ADR-015 and ADR-016 for full financial corridor specification.
+
+[node]
+node_id         = "rs-fin-node-01"
+node_scope      = "regional"
+region          = "RS"
+operator_id     = "example-fin-operator"
+policy_version  = "0.1.0"
+applicable_law  = "RS-GDPR"
+signed_by       = "ed25519:REPLACE_ME"
+log_level       = "info"
+log_format      = "json"
+
+[profile]
+name            = "strict"
+
+[policy.outbound]
+allow_to        = ["RU", "BY", "KZ", "AM"]
+store_locally   = true
+
+[policy.inbound]
+min_trust_tier  = 1
+
+[policy.audit]
+log_all_decisions   = true
+log_backend         = "local-merkle"
+export_to_operator  = true
+dns_txt_publish     = true
+dns_txt_interval_s  = 3600
+https_well_known    = true
+
+# Payments must only transit regional nodes in declared jurisdictions.
+[policy.jurisdiction_isolation]
+
+[[policy.jurisdiction_isolation.rules]]
+schema_type         = "iso20022"
+allow_tiers         = ["regional"]
+allow_jurisdictions = ["RU", "RS", "BY", "KZ", "AM"]
+require_profile     = "strict"
+
+[[policy.jurisdiction_isolation.rules]]
+schema_type         = "messaging"
+allow_tiers         = ["regional", "alliance", "global"]
+
+[network]
+grpc_listen_addr = "0.0.0.0:7777"
+http_listen_addr = "0.0.0.0:8080"
+metrics_addr     = "0.0.0.0:9090"
+
+[schema_registry]
+
+[[schema_registry.adapters]]
+type    = "messaging"
+version = "1.0.0"
+enabled = true
+
+[[schema_registry.adapters]]
+type    = "iso20022"
+version = "1.0.0"
+enabled = true

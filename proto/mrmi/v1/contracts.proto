@@ -16,6 +16,8 @@ message Envelope {
   uint32 padded_to = 9;
   int64 timestamp = 10;
   bytes signature = 11;
+  string schema_type    = 12; // "messaging" | "iso20022" | "hl7fhir" | "edifact" | "custom:<id>"
+  string schema_version = 13; // semver e.g. "1.0.0"
 }
 
 message PolicyResult {
