@@ -122,7 +122,7 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 
 	if req.Envelope.IsDummy {
 		g.audit.Append(g.cfg, audit.DecisionDummy, "DUMMY_TRAFFIC", 0,
-			req.Envelope.SenderRegion, req.Envelope.RecipientRegion)
+			req.Envelope.SenderRegion, req.Envelope.RecipientRegion, "", "")
 		return SendResponse{
 			Decision:      DecisionAllow,
 			Reason:        "DUMMY_TRAFFIC",
@@ -134,7 +134,8 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 
 	if g.dedup.SeenOrAdd(req.Envelope.IdempotencyKey) {
 		g.audit.Append(g.cfg, audit.DecisionDuplicate, "DUPLICATE_IDEMPOTENCY_KEY",
-			req.Envelope.TrustTier, req.Envelope.SenderRegion, req.Envelope.RecipientRegion)
+			req.Envelope.TrustTier, req.Envelope.SenderRegion, req.Envelope.RecipientRegion,
+			req.Envelope.SchemaType, req.Envelope.SchemaVersion)
 		if g.onDuplicate != nil {
 			g.onDuplicate()
 		}
@@ -153,6 +154,7 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 		RecipientRegion: req.Envelope.RecipientRegion,
 		TrustTier:       req.Envelope.TrustTier,
 		SchemaType:      req.Envelope.SchemaType,
+		SchemaVersion:   req.Envelope.SchemaVersion,
 	})
 
 	var peerRootHash string

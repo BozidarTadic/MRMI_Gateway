@@ -60,8 +60,8 @@ func TestKeygen_GeneratedKeyRoundTrips(t *testing.T) {
 func TestAuditVerifyLocal_Pass(t *testing.T) {
 	log := audit.New()
 	cfg := config.DefaultBalancedConfig()
-	log.Append(cfg, audit.DecisionAllow, "POLICY_ACCEPTED", 0, "RS", "RU")
-	log.Append(cfg, audit.DecisionDeny, "RECIPIENT_REGION_NOT_IN_ALLOW_LIST", 0, "RS", "US")
+	log.Append(cfg, audit.DecisionAllow, "POLICY_ACCEPTED", 0, "RS", "RU", "", "")
+	log.Append(cfg, audit.DecisionDeny, "RECIPIENT_REGION_NOT_IN_ALLOW_LIST", 0, "RS", "US", "", "")
 
 	path := t.TempDir() + "/log.json"
 	if err := log.WriteJSON(path); err != nil {
@@ -81,7 +81,7 @@ func TestAuditVerifyLocal_FailsOnMissingFile(t *testing.T) {
 func TestAuditVerifyLocal_FailsOnTamperedLog(t *testing.T) {
 	log := audit.New()
 	cfg := config.DefaultBalancedConfig()
-	log.Append(cfg, audit.DecisionAllow, "POLICY_ACCEPTED", 0, "RS", "RU")
+	log.Append(cfg, audit.DecisionAllow, "POLICY_ACCEPTED", 0, "RS", "RU", "", "")
 
 	path := t.TempDir() + "/log.json"
 	_ = log.WriteJSON(path)

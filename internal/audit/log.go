@@ -37,6 +37,8 @@ type Entry struct {
 	NodeScope       string   `json:"node_scope"`
 	AllianceID      string   `json:"alliance_id"`
 	NodeRegion      string   `json:"node_region"`
+	SchemaType      string   `json:"schema_type,omitempty"`
+	SchemaVersion   string   `json:"schema_version,omitempty"`
 	PreviousHash    string   `json:"previous_hash"`
 	EntryHash       string   `json:"entry_hash"`
 }
@@ -62,7 +64,7 @@ func (l *Log) SetStore(s store.NodeStore) {
 	l.mu.Unlock()
 }
 
-func (l *Log) Append(cfg config.Config, decision Decision, reason string, trustTier uint32, senderRegion, recipientRegion string) Entry {
+func (l *Log) Append(cfg config.Config, decision Decision, reason string, trustTier uint32, senderRegion, recipientRegion, schemaType, schemaVersion string) Entry {
 	l.mu.Lock()
 	prevHash := l.root
 	entry := Entry{
@@ -80,6 +82,8 @@ func (l *Log) Append(cfg config.Config, decision Decision, reason string, trustT
 		NodeScope:       cfg.Node.NodeScope,
 		AllianceID:      cfg.Node.AllianceID,
 		NodeRegion:      cfg.Node.Region,
+		SchemaType:      schemaType,
+		SchemaVersion:   schemaVersion,
 		PreviousHash:    prevHash,
 	}
 	entry.EntryHash = hashEntry(entry)
@@ -233,6 +237,8 @@ func hashEntry(entry Entry) string {
 		NodeScope       string   `json:"node_scope"`
 		AllianceID      string   `json:"alliance_id"`
 		NodeRegion      string   `json:"node_region"`
+		SchemaType      string   `json:"schema_type,omitempty"`
+		SchemaVersion   string   `json:"schema_version,omitempty"`
 		PreviousHash    string   `json:"previous_hash"`
 	}{
 		Seq:             entry.Seq,
@@ -249,6 +255,8 @@ func hashEntry(entry Entry) string {
 		NodeScope:       entry.NodeScope,
 		AllianceID:      entry.AllianceID,
 		NodeRegion:      entry.NodeRegion,
+		SchemaType:      entry.SchemaType,
+		SchemaVersion:   entry.SchemaVersion,
 		PreviousHash:    entry.PreviousHash,
 	}
 
@@ -268,6 +276,8 @@ func toStoreEntry(e Entry) store.AuditEntry {
 		Profile:         e.Profile,
 		ApplicableLaw:   e.ApplicableLaw,
 		Reason:          e.Reason,
+		SchemaType:      e.SchemaType,
+		SchemaVersion:   e.SchemaVersion,
 	}
 }
 
@@ -282,6 +292,8 @@ func fromStoreEntry(e store.AuditEntry) Entry {
 		Profile:         e.Profile,
 		ApplicableLaw:   e.ApplicableLaw,
 		Reason:          e.Reason,
+		SchemaType:      e.SchemaType,
+		SchemaVersion:   e.SchemaVersion,
 	}
 }
 

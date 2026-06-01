@@ -13,8 +13,8 @@ func TestLogVerify(t *testing.T) {
 	log := New()
 	cfg := config.DefaultBalancedConfig()
 
-	log.Append(cfg, DecisionAllow, "POLICY_ACCEPTED", 1, "RS", "RU")
-	log.Append(cfg, DecisionDeny, "RECIPIENT_REGION_DENIED", 0, "RS", "US")
+	log.Append(cfg, DecisionAllow, "POLICY_ACCEPTED", 1, "RS", "RU", "", "")
+	log.Append(cfg, DecisionDeny, "RECIPIENT_REGION_DENIED", 0, "RS", "US", "", "")
 
 	if err := log.Verify(); err != nil {
 		t.Fatalf("expected audit log verification to pass, got %v", err)
@@ -63,8 +63,8 @@ func TestLog_AppendPersistsToStore(t *testing.T) {
 	log := New()
 	log.SetStore(ms)
 
-	log.Append(cfg, DecisionAllow, "POLICY_ACCEPTED", 1, "RS", "RU")
-	log.Append(cfg, DecisionDeny, "BLOCKED", 0, "RS", "US")
+	log.Append(cfg, DecisionAllow, "POLICY_ACCEPTED", 1, "RS", "RU", "", "")
+	log.Append(cfg, DecisionDeny, "BLOCKED", 0, "RS", "US", "", "")
 
 	ms.mu.Lock()
 	n := len(ms.entries)
@@ -104,7 +104,7 @@ func TestLog_RecentFallsBackToMemory(t *testing.T) {
 	cfg := config.DefaultBalancedConfig()
 	log := New()
 	// No store set — must use in-memory.
-	log.Append(cfg, DecisionAllow, "", 1, "RS", "RU")
+	log.Append(cfg, DecisionAllow, "", 1, "RS", "RU", "", "")
 
 	entries := log.Recent(5)
 	if len(entries) != 1 {
@@ -119,7 +119,7 @@ func TestLog_RootHashUnaffectedByStore(t *testing.T) {
 	log.SetStore(ms)
 
 	before := log.RootHash()
-	log.Append(cfg, DecisionAllow, "", 1, "RS", "RU")
+	log.Append(cfg, DecisionAllow, "", 1, "RS", "RU", "", "")
 	after := log.RootHash()
 
 	if before == after {

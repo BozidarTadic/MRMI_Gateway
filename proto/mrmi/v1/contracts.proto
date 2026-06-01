@@ -55,9 +55,11 @@ message AuditEntry {
   uint32 dedup_ttl_hours = 9;
   bytes prev_hash = 10;
   bytes entry_hash = 11;
-  string node_scope = 12;   // "regional" | "alliance" | "global"
-  string alliance_id = 13;  // non-empty only for alliance nodes
-  string node_region = 14;  // physical region of the node
+  string node_scope = 12;      // "regional" | "alliance" | "global"
+  string alliance_id = 13;     // non-empty only for alliance nodes
+  string node_region = 14;     // physical region of the node
+  string schema_type    = 15;  // e.g. "messaging" | "iso20022"; mirrors Envelope.schema_type
+  string schema_version = 16;  // semver e.g. "1.0.0"; mirrors Envelope.schema_version
 }
 
 message ProfileConfig {

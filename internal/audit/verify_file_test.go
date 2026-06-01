@@ -11,8 +11,8 @@ import (
 func TestVerifyFile_ValidChain(t *testing.T) {
 	log := New()
 	cfg := config.DefaultBalancedConfig()
-	log.Append(cfg, DecisionAllow, "POLICY_ACCEPTED", 0, "RS", "RU")
-	log.Append(cfg, DecisionDeny, "RECIPIENT_REGION_NOT_IN_ALLOW_LIST", 0, "RS", "US")
+	log.Append(cfg, DecisionAllow, "POLICY_ACCEPTED", 0, "RS", "RU", "", "")
+	log.Append(cfg, DecisionDeny, "RECIPIENT_REGION_NOT_IN_ALLOW_LIST", 0, "RS", "US", "", "")
 
 	path := t.TempDir() + "/log.json"
 	if err := log.WriteJSON(path); err != nil {
@@ -49,7 +49,7 @@ func TestVerifyFile_EmptyLog(t *testing.T) {
 func TestVerifyFile_TamperedEntryDetected(t *testing.T) {
 	log := New()
 	cfg := config.DefaultBalancedConfig()
-	log.Append(cfg, DecisionAllow, "POLICY_ACCEPTED", 0, "RS", "RU")
+	log.Append(cfg, DecisionAllow, "POLICY_ACCEPTED", 0, "RS", "RU", "", "")
 
 	path := t.TempDir() + "/tampered.json"
 	if err := log.WriteJSON(path); err != nil {

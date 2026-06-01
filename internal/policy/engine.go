@@ -41,6 +41,7 @@ type Request struct {
 	RecipientRegion string
 	TrustTier       uint32
 	SchemaType      string // optional; "" treated as "messaging"
+	SchemaVersion   string // optional; propagated verbatim to audit
 }
 
 type Result struct {
@@ -222,5 +223,5 @@ func (e *Engine) appendAudit(cfg config.Config, result Result, req Request) {
 	if e.audit == nil {
 		return
 	}
-	e.audit.Append(cfg, audit.Decision(result.Decision), result.Reason, req.TrustTier, req.SenderRegion, req.RecipientRegion)
+	e.audit.Append(cfg, audit.Decision(result.Decision), result.Reason, req.TrustTier, req.SenderRegion, req.RecipientRegion, req.SchemaType, req.SchemaVersion)
 }

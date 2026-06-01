@@ -124,31 +124,33 @@ async function loadAudit() {
 	const filter = document.getElementById('audit-filter').value;
 	const n = parseInt(document.getElementById('audit-limit').value) || 50;
 	const tbody = document.getElementById('audit-tbody');
-	tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+	tbody.innerHTML = '<tr><td colspan="8" class="empty">Loading…</td></tr>';
 	try {
 		let entries = await api('GET', `/api/v1/audit/latest?n=${n}`);
 		if (!entries) entries = [];
 		if (filter) entries = entries.filter(e => String(e.decision) === filter);
 		if (entries.length === 0) {
-			tbody.innerHTML = '<tr><td colspan="7" class="empty">No entries</td></tr>';
+			tbody.innerHTML = '<tr><td colspan="8" class="empty">No entries</td></tr>';
 			return;
 		}
 		tbody.innerHTML = entries.map(e => {
 			const dec = String(e.decision || '').toLowerCase().replace('/', '-');
 			const badge = `<span class="badge ${dec}">${esc(e.decision || '—')}</span>`;
 			const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '—';
+			const schema = e.schema_type ? esc(e.schema_type) : '<span style="color:var(--text3)">messaging</span>';
 			return `<tr>
 				<td>${e.seq ?? '—'}</td>
 				<td style="font-family:monospace;font-size:11px">${ts}</td>
 				<td>${badge}</td>
 				<td>${esc(e.sender_region || '—')}</td>
 				<td>${esc(e.recipient_region || '—')}</td>
+				<td style="font-size:12px">${schema}</td>
 				<td>${esc(e.profile || '—')}</td>
 				<td style="color:var(--text3);font-size:12px">${esc(e.reason || '')}</td>
 			</tr>`;
 		}).join('');
 	} catch (e) {
-		tbody.innerHTML = `<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`;
+		tbody.innerHTML = `<tr><td colspan="8" class="empty">${esc(e.message)}</td></tr>`;
 	}
 }
 
