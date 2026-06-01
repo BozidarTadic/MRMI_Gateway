@@ -25,6 +25,9 @@ const (
 
 const ReasonTrustTierBelowMinimum = "TRUST_TIER_BELOW_MINIMUM"
 const ReasonAppIsolationViolation = "APP_ISOLATION_VIOLATION"
+const ReasonJurisdictionIsolationTier = "JURISDICTION_ISOLATION_TIER_DENIED"
+const ReasonJurisdictionIsolationRegion = "JURISDICTION_ISOLATION_REGION_DENIED"
+const ReasonJurisdictionIsolationProfile = "JURISDICTION_ISOLATION_PROFILE_MISMATCH"
 
 // DiscoveryRequest is the input to EvaluateDiscovery.
 type DiscoveryRequest struct {
@@ -37,6 +40,7 @@ type Request struct {
 	SenderRegion    string
 	RecipientRegion string
 	TrustTier       uint32
+	SchemaType      string // optional; "" treated as "messaging"
 }
 
 type Result struct {
@@ -110,6 +114,11 @@ func (e *Engine) Evaluate(req Request) Result {
 		return result
 	}
 
+	if result, ok := e.evaluateJurisdictionIsolation(cfg, req); !ok {
+		e.appendAudit(cfg, result, req)
+		return result
+	}
+
 	result := Result{
 		Decision: DecisionAllow,
 		Reason:   "POLICY_ACCEPTED",
@@ -117,6 +126,63 @@ func (e *Engine) Evaluate(req Request) Result {
 	}
 	e.appendAudit(cfg, result, req)
 	return result
+}
+
+// evaluateJurisdictionIsolation checks schema_type rules from
+// [policy.jurisdiction_isolation]. Returns (result, false) on denial,
+// (zero, true) when the envelope is allowed to proceed.
+func (e *Engine) evaluateJurisdictionIsolation(cfg config.Config, req Request) (Result, bool) {
+	rules := cfg.Policy.JurisdictionIsolation.Rules
+	if len(rules) == 0 {
+		return Result{}, true
+	}
+
+	schemaType := req.SchemaType
+	if strings.TrimSpace(schemaType) == "" {
+		schemaType = "messaging"
+	}
+
+	for _, rule := range rules {
+		if rule.SchemaType != schemaType {
+			continue
+		}
+
+		// Tier check: this node's NodeScope must be in the allow list.
+		if len(rule.AllowTiers) > 0 && !slices.Contains(rule.AllowTiers, cfg.Node.NodeScope) {
+			return Result{
+				Decision: DecisionDeny,
+				Reason:   ReasonJurisdictionIsolationTier,
+				Profile:  cfg.Profile.Name,
+			}, false
+		}
+
+		// Jurisdiction check: both sender and recipient must be in the allow list.
+		if len(rule.AllowJurisdictions) > 0 {
+			if !slices.Contains(rule.AllowJurisdictions, req.SenderRegion) ||
+				!slices.Contains(rule.AllowJurisdictions, req.RecipientRegion) {
+				return Result{
+					Decision: DecisionDeny,
+					Reason:   ReasonJurisdictionIsolationRegion,
+					Profile:  cfg.Profile.Name,
+				}, false
+			}
+		}
+
+		// Profile check: the active profile must match the required profile.
+		if rule.RequireProfile != "" && !strings.EqualFold(cfg.Profile.Name, rule.RequireProfile) {
+			return Result{
+				Decision: DecisionDeny,
+				Reason:   ReasonJurisdictionIsolationProfile,
+				Profile:  cfg.Profile.Name,
+			}, false
+		}
+
+		// First matching rule passed — no further rules are evaluated.
+		return Result{}, true
+	}
+
+	// No matching rule found — allow by default.
+	return Result{}, true
 }
 
 // EvaluateDiscovery enforces app_id isolation policy before forwarding a

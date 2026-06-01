@@ -152,6 +152,7 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 		SenderRegion:    req.Envelope.SenderRegion,
 		RecipientRegion: req.Envelope.RecipientRegion,
 		TrustTier:       req.Envelope.TrustTier,
+		SchemaType:      req.Envelope.SchemaType,
 	})
 
 	var peerRootHash string
