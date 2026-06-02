@@ -59,7 +59,7 @@ App A (RU) ── SDK ── MRMI Node (RU) ══ gRPC/mTLS ══ MRMI Node (R
 
 Each node runs a Go binary. Nodes communicate over gRPC with mutual TLS. Every envelope is policy-checked, deduplicated via idempotency key, and appended to a Merkle audit log whose root hash is published to DNS TXT for independent verification.
 
-Full architecture: [docs/MRMI_Gateway_ADR_v0_9.md](docs/MRMI_Gateway_ADR_v0_9.md)
+Full architecture: [docs/MRMI_Gateway_ADR_v0_9.md](docs/MRMI_Gateway_ADR_v0_9.md) · [Protocol Specification](docs/PROTOCOL_SPEC.md)
 
 ## Key Properties
 

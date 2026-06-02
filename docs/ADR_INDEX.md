@@ -26,3 +26,7 @@ Each file documents the decisions **introduced** in that version. The v0.8 file 
 - [v0.8](MRMI_Gateway_ADR_v0_8.md) — Current accepted baseline (full document)
 - [v0.9](MRMI_Gateway_ADR_v0_9.md) — Latest proposed additions
 - [MRMI_Gateway_ADR_v0_9.pdf](MRMI_Gateway_ADR_v0_9.pdf) — Original PDF source for v0.9
+
+## Normative specification
+
+- [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md) — Implementation-independent envelope contract, policy engine interface, audit log format, mTLS requirements, and conformance levels (v0.1)
