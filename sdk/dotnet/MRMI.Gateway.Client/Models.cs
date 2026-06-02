@@ -49,6 +49,13 @@ public sealed class SendEnvelopeRequest
     [JsonPropertyName("schema_version")]
     public string SchemaVersion { get; init; } = "1.0.0";
 
+    /// <summary>
+    /// Optional BIC prefix or other opaque hint used by the forwarder to prefer a matching
+    /// peer when routing ISO 20022 envelopes. Ignored for other schema types.
+    /// </summary>
+    [JsonPropertyName("routing_hint")]
+    public string? RoutingHint { get; init; }
+
     /// <summary>Wire-format schema_type string derived from <see cref="SchemaType"/>.</summary>
     [JsonPropertyName("schema_type")]
     public string SchemaTypeWire => SchemaType switch

@@ -337,6 +337,90 @@ public sealed class MrmiClient : IDisposable
         response.EnsureSuccessStatusCode();
     }
 
+    // ── Envelope builders ─────────────────────────────────────────────────────
+    // Convenience factories that pre-populate schema_type and schema_version.
+    // Callers supply the required routing fields (idempotencyKey, regions).
+
+    /// <summary>
+    /// Create a messaging envelope with <c>schema_type="messaging"</c> pre-set.
+    /// </summary>
+    public static SendEnvelopeRequest CreateMessagingEnvelope(
+        string idempotencyKey,
+        string senderRegion,
+        string recipientRegion,
+        byte[]? payload = null) =>
+        new()
+        {
+            IdempotencyKey   = idempotencyKey,
+            SenderRegion     = senderRegion,
+            RecipientRegion  = recipientRegion,
+            Payload          = payload,
+            SchemaType       = SchemaType.Messaging,
+            SchemaVersion    = "1.0.0",
+        };
+
+    /// <summary>
+    /// Create an ISO 20022 financial envelope with <c>schema_type="iso20022"</c> pre-set.
+    /// </summary>
+    /// <param name="bicPrefix">
+    /// First 6 characters of a BIC code. When supplied the forwarder prefers a matching
+    /// peer for routing. Omitting it is the common case — routing falls back to region.
+    /// </param>
+    public static SendEnvelopeRequest CreateIso20022Envelope(
+        string idempotencyKey,
+        string senderRegion,
+        string recipientRegion,
+        byte[]? payload = null,
+        string? bicPrefix = null,
+        string schemaVersion = "1.0.0") =>
+        new()
+        {
+            IdempotencyKey   = idempotencyKey,
+            SenderRegion     = senderRegion,
+            RecipientRegion  = recipientRegion,
+            Payload          = payload,
+            SchemaType       = SchemaType.Iso20022,
+            SchemaVersion    = schemaVersion,
+            RoutingHint      = bicPrefix,
+        };
+
+    /// <summary>
+    /// Create an HL7 FHIR R4 health-data envelope with <c>schema_type="hl7fhir"</c> pre-set.
+    /// The gateway enforces ADR-015 constraints (regional node + strict profile).
+    /// </summary>
+    public static SendEnvelopeRequest CreateHl7FhirEnvelope(
+        string idempotencyKey,
+        string senderRegion,
+        string recipientRegion,
+        byte[]? payload = null) =>
+        new()
+        {
+            IdempotencyKey   = idempotencyKey,
+            SenderRegion     = senderRegion,
+            RecipientRegion  = recipientRegion,
+            Payload          = payload,
+            SchemaType       = SchemaType.Hl7Fhir,
+            SchemaVersion    = "1.0.0",
+        };
+
+    /// <summary>
+    /// Create a UN/EDIFACT logistics envelope with <c>schema_type="edifact"</c> pre-set.
+    /// </summary>
+    public static SendEnvelopeRequest CreateEdifactEnvelope(
+        string idempotencyKey,
+        string senderRegion,
+        string recipientRegion,
+        byte[]? payload = null) =>
+        new()
+        {
+            IdempotencyKey   = idempotencyKey,
+            SenderRegion     = senderRegion,
+            RecipientRegion  = recipientRegion,
+            Payload          = payload,
+            SchemaType       = SchemaType.Edifact,
+            SchemaVersion    = "1.0.0",
+        };
+
     public void Dispose()
     {
         if (_ownsClient) _http.Dispose();

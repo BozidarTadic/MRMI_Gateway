@@ -538,6 +538,82 @@ public sealed class MrmiClientTests
         Assert.Equal("iso20022", doc.RootElement.GetProperty("schema_type").GetString());
         Assert.Equal("2.0.0", doc.RootElement.GetProperty("schema_version").GetString());
     }
+
+    // ── Envelope builders (ADR-015, #101) ────────────────────────────────────
+
+    [Fact]
+    public void CreateMessagingEnvelope_SetsCorrectSchemaFields()
+    {
+        var req = MrmiClient.CreateMessagingEnvelope("k1", "RS", "RU", payload: [1, 2, 3]);
+
+        Assert.Equal(SchemaType.Messaging, req.SchemaType);
+        Assert.Equal("messaging", req.SchemaTypeWire);
+        Assert.Equal("1.0.0", req.SchemaVersion);
+        Assert.Null(req.RoutingHint);
+        Assert.Equal("k1", req.IdempotencyKey);
+        Assert.Equal("RS", req.SenderRegion);
+        Assert.Equal("RU", req.RecipientRegion);
+    }
+
+    [Fact]
+    public void CreateIso20022Envelope_SetsSchemaFieldsAndRoutingHint()
+    {
+        var req = MrmiClient.CreateIso20022Envelope("k2", "RS", "RU", bicPrefix: "BANKRS");
+
+        Assert.Equal(SchemaType.Iso20022, req.SchemaType);
+        Assert.Equal("iso20022", req.SchemaTypeWire);
+        Assert.Equal("1.0.0", req.SchemaVersion);
+        Assert.Equal("BANKRS", req.RoutingHint);
+    }
+
+    [Fact]
+    public void CreateIso20022Envelope_NullBicPrefix_LeavesRoutingHintNull()
+    {
+        var req = MrmiClient.CreateIso20022Envelope("k3", "RS", "RU");
+
+        Assert.Null(req.RoutingHint);
+    }
+
+    [Fact]
+    public void CreateIso20022Envelope_CustomSchemaVersion()
+    {
+        var req = MrmiClient.CreateIso20022Envelope("k4", "RS", "RU", schemaVersion: "2019");
+
+        Assert.Equal("2019", req.SchemaVersion);
+    }
+
+    [Fact]
+    public void CreateHl7FhirEnvelope_SetsCorrectSchemaFields()
+    {
+        var req = MrmiClient.CreateHl7FhirEnvelope("k5", "RS", "RU");
+
+        Assert.Equal(SchemaType.Hl7Fhir, req.SchemaType);
+        Assert.Equal("hl7fhir", req.SchemaTypeWire);
+        Assert.Equal("1.0.0", req.SchemaVersion);
+        Assert.Null(req.RoutingHint);
+    }
+
+    [Fact]
+    public void CreateEdifactEnvelope_SetsCorrectSchemaFields()
+    {
+        var req = MrmiClient.CreateEdifactEnvelope("k6", "RS", "RU");
+
+        Assert.Equal(SchemaType.Edifact, req.SchemaType);
+        Assert.Equal("edifact", req.SchemaTypeWire);
+        Assert.Equal("1.0.0", req.SchemaVersion);
+        Assert.Null(req.RoutingHint);
+    }
+
+    [Fact]
+    public void CreateIso20022Envelope_RoutingHint_IncludedInSerialization()
+    {
+        var req = MrmiClient.CreateIso20022Envelope("k7", "RS", "RU", bicPrefix: "BANKRS");
+        var json = JsonSerializer.Serialize(req);
+        var doc = JsonDocument.Parse(json);
+
+        Assert.Equal("BANKRS", doc.RootElement.GetProperty("routing_hint").GetString());
+        Assert.Equal("iso20022", doc.RootElement.GetProperty("schema_type").GetString());
+    }
 }
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
