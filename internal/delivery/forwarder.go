@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/core"
+	"MRMI_Gateway/internal/schema"
 	"MRMI_Gateway/internal/transit"
 )
 
@@ -67,9 +69,24 @@ func (f *Forwarder) PeersFor(recipientRegion string) []config.PeerConfig {
 // the configured retry policy per peer. The envelope is written to the DLQ only
 // after all peers and all their retries are exhausted. Satisfies core.Forwarder.
 func (f *Forwarder) Forward(ctx context.Context, env core.Envelope) (string, error) {
+	// iso20022 cutoff window check: DLQ immediately if outside the processing window (ADR-016).
+	if env.SchemaType == schema.Iso20022 {
+		if err := f.checkCutoffWindow(env); err != nil {
+			if f.dlq != nil {
+				f.dlq.Append(DLQEntry{Envelope: env, PeerAddr: ""})
+			}
+			return "", err
+		}
+	}
+
 	peers := f.PeersFor(env.RecipientRegion)
 	if len(peers) == 0 {
 		return "", fmt.Errorf("no peer available for region %q", env.RecipientRegion)
+	}
+
+	// BIC routing hint: prefer the peer whose Region matches the hint (graceful no-op if none match).
+	if env.RoutingHint != "" {
+		peers = reorderByHint(peers, env.RoutingHint)
 	}
 
 	for _, peer := range peers {
@@ -95,4 +112,41 @@ func (f *Forwarder) Forward(ctx context.Context, env core.Envelope) (string, err
 		f.dlq.Append(DLQEntry{Envelope: env, PeerAddr: peers[0].Addr})
 	}
 	return "", fmt.Errorf("all peers exhausted for region %q", env.RecipientRegion)
+}
+
+// checkCutoffWindow returns an error when the envelope falls outside the configured
+// iso20022 processing window for its SRC-DST corridor. No configured window = allow.
+func (f *Forwarder) checkCutoffWindow(env core.Envelope) error {
+	windows := f.cfg.SchemaRegistry.Iso20022.CutoffWindows
+	if len(windows) == 0 {
+		return nil
+	}
+	corridorKey := env.SenderRegion + "-" + env.RecipientRegion
+	w, ok := windows[corridorKey]
+	if !ok {
+		return nil
+	}
+	inWindow, err := schema.IsInWindow(w, time.Now())
+	if err != nil {
+		return fmt.Errorf("iso20022: cutoff window check: %w", err)
+	}
+	if !inWindow {
+		return fmt.Errorf("iso20022: envelope rejected: outside processing window for corridor %s", corridorKey)
+	}
+	return nil
+}
+
+// reorderByHint moves the first peer whose Region matches hint to the front.
+// Returns peers unchanged if no match is found.
+func reorderByHint(peers []config.PeerConfig, hint string) []config.PeerConfig {
+	for i, p := range peers {
+		if p.Region == hint {
+			out := make([]config.PeerConfig, 0, len(peers))
+			out = append(out, p)
+			out = append(out, peers[:i]...)
+			out = append(out, peers[i+1:]...)
+			return out
+		}
+	}
+	return peers
 }

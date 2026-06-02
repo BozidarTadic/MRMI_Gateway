@@ -108,6 +108,7 @@ func (a *gatewayAdapter) SendEnvelope(ctx context.Context, req *SendEnvelopeRequ
 			Timestamp:       req.Envelope.Timestamp,
 			SchemaType:      req.Envelope.SchemaType,
 			SchemaVersion:   req.Envelope.SchemaVersion,
+			RoutingHint:     req.Envelope.RoutingHint,
 		}
 		if err := identity.Verify(a.verifyKey, env, req.Envelope.Signature); err != nil {
 			return &SendEnvelopeResponse{
@@ -134,6 +135,7 @@ func (a *gatewayAdapter) SendEnvelope(ctx context.Context, req *SendEnvelopeRequ
 			IsDummy:           req.Envelope.IsDummy,
 			SchemaType:        req.Envelope.SchemaType,
 			SchemaVersion:     req.Envelope.SchemaVersion,
+			RoutingHint:       req.Envelope.RoutingHint,
 		},
 	})
 	if err != nil {

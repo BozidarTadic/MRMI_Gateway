@@ -29,6 +29,8 @@ type AuditEntry struct {
 	Reason          string `json:"reason"`
 	SchemaType      string `json:"schema_type,omitempty"`
 	SchemaVersion   string `json:"schema_version,omitempty"`
+	RetainLong      bool   `json:"retain_long,omitempty"`
+	SettlementFinal bool   `json:"settlement_final,omitempty"`
 }
 
 // CRLEntry stores a certificate revocation record.

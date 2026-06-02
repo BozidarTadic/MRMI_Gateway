@@ -10,16 +10,18 @@ import (
 	"time"
 
 	"MRMI_Gateway/internal/config"
+	"MRMI_Gateway/internal/schema"
 	"MRMI_Gateway/internal/store"
 )
 
 type Decision string
 
 const (
-	DecisionAllow     Decision = "ALLOW"
-	DecisionDeny      Decision = "DENY"
-	DecisionDuplicate Decision = "DUPLICATE"
-	DecisionDummy     Decision = "ALLOW/DUMMY"
+	DecisionAllow           Decision = "ALLOW"
+	DecisionDeny            Decision = "DENY"
+	DecisionDuplicate       Decision = "DUPLICATE"
+	DecisionDummy           Decision = "ALLOW/DUMMY"
+	DecisionSettlementFinal Decision = "SETTLEMENT/FINAL"
 )
 
 type Entry struct {
@@ -39,6 +41,8 @@ type Entry struct {
 	NodeRegion      string   `json:"node_region"`
 	SchemaType      string   `json:"schema_type,omitempty"`
 	SchemaVersion   string   `json:"schema_version,omitempty"`
+	RetainLong      bool     `json:"retain_long,omitempty"`
+	SettlementFinal bool     `json:"settlement_final,omitempty"`
 	PreviousHash    string   `json:"previous_hash"`
 	EntryHash       string   `json:"entry_hash"`
 }
@@ -65,6 +69,19 @@ func (l *Log) SetStore(s store.NodeStore) {
 }
 
 func (l *Log) Append(cfg config.Config, decision Decision, reason string, trustTier uint32, senderRegion, recipientRegion, schemaType, schemaVersion string) Entry {
+	// iso20022 envelopes always carry retain_long=true (ADR-016: ≥ 7-year retention).
+	retainLong := schemaType == schema.Iso20022 || cfg.SchemaRegistry.Iso20022.RetainLong
+	return l.appendEntry(cfg, decision, reason, trustTier, senderRegion, recipientRegion, schemaType, schemaVersion, retainLong, false)
+}
+
+// AppendFinality appends a settlement-finality audit entry after a successful ACK
+// from the destination node for an iso20022 envelope (ADR-016).
+func (l *Log) AppendFinality(cfg config.Config, senderRegion, recipientRegion, schemaVersion string) Entry {
+	return l.appendEntry(cfg, DecisionSettlementFinal, "ISO20022_SETTLEMENT_FINAL",
+		0, senderRegion, recipientRegion, schema.Iso20022, schemaVersion, true, true)
+}
+
+func (l *Log) appendEntry(cfg config.Config, decision Decision, reason string, trustTier uint32, senderRegion, recipientRegion, schemaType, schemaVersion string, retainLong, settlementFinal bool) Entry {
 	l.mu.Lock()
 	prevHash := l.root
 	entry := Entry{
@@ -84,6 +101,8 @@ func (l *Log) Append(cfg config.Config, decision Decision, reason string, trustT
 		NodeRegion:      cfg.Node.Region,
 		SchemaType:      schemaType,
 		SchemaVersion:   schemaVersion,
+		RetainLong:      retainLong,
+		SettlementFinal: settlementFinal,
 		PreviousHash:    prevHash,
 	}
 	entry.EntryHash = hashEntry(entry)
@@ -239,6 +258,8 @@ func hashEntry(entry Entry) string {
 		NodeRegion      string   `json:"node_region"`
 		SchemaType      string   `json:"schema_type,omitempty"`
 		SchemaVersion   string   `json:"schema_version,omitempty"`
+		RetainLong      bool     `json:"retain_long,omitempty"`
+		SettlementFinal bool     `json:"settlement_final,omitempty"`
 		PreviousHash    string   `json:"previous_hash"`
 	}{
 		Seq:             entry.Seq,
@@ -257,6 +278,8 @@ func hashEntry(entry Entry) string {
 		NodeRegion:      entry.NodeRegion,
 		SchemaType:      entry.SchemaType,
 		SchemaVersion:   entry.SchemaVersion,
+		RetainLong:      entry.RetainLong,
+		SettlementFinal: entry.SettlementFinal,
 		PreviousHash:    entry.PreviousHash,
 	}
 
@@ -278,6 +301,8 @@ func toStoreEntry(e Entry) store.AuditEntry {
 		Reason:          e.Reason,
 		SchemaType:      e.SchemaType,
 		SchemaVersion:   e.SchemaVersion,
+		RetainLong:      e.RetainLong,
+		SettlementFinal: e.SettlementFinal,
 	}
 }
 
@@ -294,6 +319,8 @@ func fromStoreEntry(e store.AuditEntry) Entry {
 		Reason:          e.Reason,
 		SchemaType:      e.SchemaType,
 		SchemaVersion:   e.SchemaVersion,
+		RetainLong:      e.RetainLong,
+		SettlementFinal: e.SettlementFinal,
 	}
 }
 

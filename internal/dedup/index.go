@@ -34,6 +34,20 @@ func (idx *Index) SeenOrAdd(key string) bool {
 	return false
 }
 
+// SeenOrAddWithTTL is like SeenOrAdd but uses ttl instead of the index default.
+// Use this when different envelope types carry different dedup windows (e.g. iso20022 at 72h).
+func (idx *Index) SeenOrAddWithTTL(key string, ttl time.Duration) bool {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+
+	now := time.Now()
+	if exp, ok := idx.entries[key]; ok && now.Before(exp) {
+		return true
+	}
+	idx.entries[key] = now.Add(ttl)
+	return false
+}
+
 // Purge removes entries whose TTL has expired. Call periodically to bound memory.
 func (idx *Index) Purge() {
 	idx.mu.Lock()

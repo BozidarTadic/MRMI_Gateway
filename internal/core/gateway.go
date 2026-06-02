@@ -46,6 +46,7 @@ type Envelope struct {
 	IsDummy           bool
 	SchemaType        string // "messaging" | "iso20022" | "hl7fhir" | "edifact" | "custom:<id>"
 	SchemaVersion     string // semver e.g. "1.0.0"
+	RoutingHint       string // BIC or other opaque routing hint (iso20022 §3.2)
 }
 
 type SendRequest struct {
@@ -135,7 +136,14 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 		}, nil
 	}
 
-	if g.dedup.SeenOrAdd(req.Envelope.IdempotencyKey) {
+	var isDup bool
+	if req.Envelope.SchemaType == schema.Iso20022 && g.cfg.SchemaRegistry.Iso20022.DedupTTLH > 0 {
+		ttl := time.Duration(g.cfg.SchemaRegistry.Iso20022.DedupTTLH) * time.Hour
+		isDup = g.dedup.SeenOrAddWithTTL(req.Envelope.IdempotencyKey, ttl)
+	} else {
+		isDup = g.dedup.SeenOrAdd(req.Envelope.IdempotencyKey)
+	}
+	if isDup {
 		g.audit.Append(g.cfg, audit.DecisionDuplicate, "DUPLICATE_IDEMPOTENCY_KEY",
 			req.Envelope.TrustTier, req.Envelope.SenderRegion, req.Envelope.RecipientRegion,
 			req.Envelope.SchemaType, req.Envelope.SchemaVersion)
@@ -171,7 +179,14 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 		if g.forwarder != nil {
 			if err := applyJitter(ctx, g.cfg.Profile.TimingJitterMax); err == nil {
 				env := applyPadding(req.Envelope, g.cfg.Profile.PaddingBucket)
-				peerRootHash, _ = g.forwarder.Forward(ctx, env)
+				if ph, fwdErr := g.forwarder.Forward(ctx, env); fwdErr == nil {
+					peerRootHash = ph
+					if req.Envelope.SchemaType == schema.Iso20022 && g.cfg.SchemaRegistry.Iso20022.SettlementFinality {
+						g.audit.AppendFinality(g.cfg,
+							req.Envelope.SenderRegion, req.Envelope.RecipientRegion,
+							req.Envelope.SchemaVersion)
+					}
+				}
 			}
 		}
 	} else {

@@ -16,6 +16,7 @@ type Envelope struct {
 	IsDummy           bool   `json:"is_dummy,omitempty"`
 	SchemaType        string `json:"schema_type,omitempty"`
 	SchemaVersion     string `json:"schema_version,omitempty"`
+	RoutingHint       string `json:"routing_hint,omitempty"`
 }
 
 type SendEnvelopeRequest struct {

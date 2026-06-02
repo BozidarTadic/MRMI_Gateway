@@ -26,6 +26,32 @@ type Config struct {
 // SchemaRegistryConfig lists the domain adapters active on this node.
 type SchemaRegistryConfig struct {
 	Adapters []AdapterConfig
+	Iso20022 Iso20022AdapterConfig
+}
+
+// Iso20022AdapterConfig holds extended configuration for the iso20022 domain adapter (ADR-016).
+type Iso20022AdapterConfig struct {
+	// DedupTTLH overrides the profile dedup TTL for iso20022 envelopes (ADR-016: always ≥ 72h).
+	// Zero means use the active profile's DedupTTL.
+	DedupTTLH int
+	// SettlementFinality enables appending a settlement-finality audit entry after a
+	// successful ACK from the destination node.
+	SettlementFinality bool
+	// RetainLong marks every iso20022 audit entry with retain_long=true, signalling that
+	// operators must preserve the log for the jurisdiction-required period (≥ 7 years).
+	RetainLong bool
+	// CutoffWindows maps "SRC-DST" corridor keys to processing-window definitions.
+	// Envelopes arriving outside the declared window are written directly to the DLQ
+	// and retried when the next window opens.
+	CutoffWindows map[string]CutoffWindow
+}
+
+// CutoffWindow defines the daily processing window for a financial message corridor.
+// Open and Close are 24-hour "HH:MM" strings. TZ is an IANA timezone name.
+type CutoffWindow struct {
+	Open  string // e.g. "08:00"
+	Close string // e.g. "17:00"
+	TZ    string // e.g. "Europe/Belgrade"
 }
 
 // AdapterConfig registers a single domain adapter (built-in or custom).
@@ -450,6 +476,16 @@ type rawTOML struct {
 			AllowTiers         []string `toml:"allow_tiers"`
 			Contact            string   `toml:"contact"`
 		} `toml:"adapters"`
+		Iso20022 struct {
+			DedupTTLH          int  `toml:"dedup_ttl_h"`
+			SettlementFinality bool `toml:"settlement_finality"`
+			RetainLong         bool `toml:"retain_long"`
+			CutoffWindows      map[string]struct {
+				Open  string `toml:"open"`
+				Close string `toml:"close"`
+				TZ    string `toml:"tz"`
+			} `toml:"cutoff_windows"`
+		} `toml:"iso20022"`
 	} `toml:"schema_registry"`
 }
 
@@ -682,6 +718,22 @@ func (r rawTOML) apply(cfg *Config) {
 				AllowTiers:         a.AllowTiers,
 				Contact:            a.Contact,
 			})
+		}
+	}
+
+	iso := r.SchemaRegistry.Iso20022
+	if iso.DedupTTLH > 0 || iso.SettlementFinality || iso.RetainLong || len(iso.CutoffWindows) > 0 {
+		cfg.SchemaRegistry.Iso20022 = Iso20022AdapterConfig{
+			DedupTTLH:          iso.DedupTTLH,
+			SettlementFinality: iso.SettlementFinality,
+			RetainLong:         iso.RetainLong,
+		}
+		if len(iso.CutoffWindows) > 0 {
+			windows := make(map[string]CutoffWindow, len(iso.CutoffWindows))
+			for k, v := range iso.CutoffWindows {
+				windows[k] = CutoffWindow{Open: v.Open, Close: v.Close, TZ: v.TZ}
+			}
+			cfg.SchemaRegistry.Iso20022.CutoffWindows = windows
 		}
 	}
 
