@@ -209,13 +209,15 @@ func TestJurisdictionIsolation_CustomAdapter_BlockedOnGlobalNode(t *testing.T) {
 	}
 }
 
-func TestJurisdictionIsolation_NoRules_AllowsEverything(t *testing.T) {
+func TestJurisdictionIsolation_NoRules_AllowsNonHealthDomains(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Node.NodeScope = "global"
 
 	engine, _ := newEngine(t, cfg)
 
-	for _, schemaType := range []string{"iso20022", "hl7fhir", "messaging", "custom:anything"} {
+	// hl7fhir is excluded: it has ADR-015 hardcoded constraints (regional+strict only)
+	// and is covered by TestHl7Fhir_* tests.
+	for _, schemaType := range []string{"iso20022", "messaging", "custom:anything"} {
 		result := engine.Evaluate(Request{
 			SenderRegion:    "RS",
 			RecipientRegion: "RU",
@@ -228,17 +230,19 @@ func TestJurisdictionIsolation_NoRules_AllowsEverything(t *testing.T) {
 	}
 }
 
-func TestJurisdictionIsolation_UnknownSchemaType_NoMatchingRule_Allowed(t *testing.T) {
+func TestJurisdictionIsolation_Hl7Fhir_AllowedOnRegionalStrictNode_NoTomlRule(t *testing.T) {
+	// jurisdictionConfig() → NodeScope=regional, Profile=strict.
+	// hl7fhir hardcoded constraints are satisfied; no TOML rule defined → ALLOW.
 	engine, _ := newEngine(t, jurisdictionConfig())
 
 	result := engine.Evaluate(Request{
 		SenderRegion:    "RS",
 		RecipientRegion: "RU",
 		TrustTier:       0,
-		SchemaType:      "hl7fhir", // no rule defined — allowed by default
+		SchemaType:      "hl7fhir",
 	})
 
 	if result.Decision != DecisionAllow {
-		t.Fatalf("expected ALLOW for schema_type with no matching rule, got %q (%s)", result.Decision, result.Reason)
+		t.Fatalf("expected ALLOW for hl7fhir on regional+strict node, got %q (%s)", result.Decision, result.Reason)
 	}
 }

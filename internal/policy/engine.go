@@ -29,6 +29,8 @@ const ReasonAppIsolationViolation = "APP_ISOLATION_VIOLATION"
 const ReasonJurisdictionIsolationTier = "JURISDICTION_ISOLATION_TIER_DENIED"
 const ReasonJurisdictionIsolationRegion = "JURISDICTION_ISOLATION_REGION_DENIED"
 const ReasonJurisdictionIsolationProfile = "JURISDICTION_ISOLATION_PROFILE_MISMATCH"
+const ReasonHl7FhirNonRegionalNode = "HL7FHIR_NON_REGIONAL_NODE"
+const ReasonHl7FhirRequiresStrictProfile = "HL7FHIR_REQUIRES_STRICT_PROFILE"
 
 // DiscoveryRequest is the input to EvaluateDiscovery.
 type DiscoveryRequest struct {
@@ -114,6 +116,14 @@ func (e *Engine) Evaluate(req Request) Result {
 		}
 		e.appendAudit(cfg, result, req)
 		return result
+	}
+
+	// ADR-015: hl7fhir mandates strict profile + regional node — hardcoded, not overrideable via TOML.
+	if schema.Normalize(req.SchemaType) == schema.Hl7Fhir {
+		if result, ok := e.enforceHl7FhirPolicy(cfg, req); !ok {
+			e.appendAudit(cfg, result, req)
+			return result
+		}
 	}
 
 	if result, ok := e.evaluateJurisdictionIsolation(cfg, req); !ok {
@@ -215,6 +225,27 @@ func (e *Engine) EvaluateDiscovery(req DiscoveryRequest) Result {
 		Reason:   "DISCOVERY_POLICY_ACCEPTED",
 		Profile:  cfg.Profile.Name,
 	}
+}
+
+// enforceHl7FhirPolicy applies the ADR-015 hardcoded health-data constraints:
+// the node must be regional and must run the strict compliance profile.
+// Returns (result, false) on denial; (zero, true) when the envelope may proceed.
+func (e *Engine) enforceHl7FhirPolicy(cfg config.Config, _ Request) (Result, bool) {
+	if cfg.Node.NodeScope != "regional" {
+		return Result{
+			Decision: DecisionDeny,
+			Reason:   ReasonHl7FhirNonRegionalNode,
+			Profile:  cfg.Profile.Name,
+		}, false
+	}
+	if !strings.EqualFold(cfg.Profile.Name, "strict") {
+		return Result{
+			Decision: DecisionDeny,
+			Reason:   ReasonHl7FhirRequiresStrictProfile,
+			Profile:  cfg.Profile.Name,
+		}, false
+	}
+	return Result{}, true
 }
 
 func (e *Engine) appendAudit(cfg config.Config, result Result, req Request) {
