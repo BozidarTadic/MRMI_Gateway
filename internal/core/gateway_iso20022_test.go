@@ -216,6 +216,48 @@ func TestGateway_Iso20022_SettlementFinality_OnlyOnSuccessfulForward(t *testing.
 	}
 }
 
+// TestGateway_Iso20022_DedupTTL_MinimumEnforced verifies that even when DedupTTLH is 0
+// (not configured), iso20022 envelopes are still deduplicated (the 72h floor applies).
+func TestGateway_Iso20022_DedupTTL_MinimumEnforced(t *testing.T) {
+	cfg := config.DefaultConfigForProfile("performance") // shortest profile TTL
+	cfg.SchemaRegistry.Iso20022 = config.Iso20022AdapterConfig{
+		DedupTTLH: 0, // explicitly unset — must still enforce 72h floor
+	}
+	auditLog := audit.New()
+	engine, err := policy.NewEngine(cfg, auditLog, nil)
+	if err != nil {
+		t.Fatalf("policy engine: %v", err)
+	}
+	gw := NewGateway(cfg, engine, auditLog, dedup.New(cfg.Profile.DedupTTL), stubForwarder{})
+
+	send := func(key string) SendResponse {
+		resp, err := gw.SendEnvelope(context.Background(), SendRequest{
+			Envelope: Envelope{
+				IdempotencyKey:  key,
+				SenderRegion:    "RS",
+				RecipientRegion: "RU",
+				Payload:         []byte("iso-payload"),
+				SchemaType:      schema.Iso20022,
+				SchemaVersion:   "2019",
+			},
+		})
+		if err != nil {
+			t.Fatalf("SendEnvelope: %v", err)
+		}
+		return resp
+	}
+
+	first := send("iso-min-ttl-key")
+	if first.Decision != DecisionAllow {
+		t.Fatalf("expected ALLOW, got %s", first.Decision)
+	}
+	// Immediate re-send must be DUPLICATE regardless of profile default TTL.
+	dup := send("iso-min-ttl-key")
+	if dup.Decision != DecisionDuplicate {
+		t.Fatalf("expected DUPLICATE (72h floor), got %s", dup.Decision)
+	}
+}
+
 // TestGateway_Iso20022_JitterIsApplied ensures iso20022 envelopes still go through
 // the normal jitter + padding path (regression guard).
 func TestGateway_Iso20022_JitterIsApplied(t *testing.T) {

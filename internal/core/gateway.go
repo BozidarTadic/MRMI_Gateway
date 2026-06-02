@@ -137,9 +137,13 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 	}
 
 	var isDup bool
-	if req.Envelope.SchemaType == schema.Iso20022 && g.cfg.SchemaRegistry.Iso20022.DedupTTLH > 0 {
-		ttl := time.Duration(g.cfg.SchemaRegistry.Iso20022.DedupTTLH) * time.Hour
-		isDup = g.dedup.SeenOrAddWithTTL(req.Envelope.IdempotencyKey, ttl)
+	if req.Envelope.SchemaType == schema.Iso20022 {
+		// ADR-016: iso20022 dedup TTL floor is 72h regardless of the active profile preset.
+		dedupH := g.cfg.SchemaRegistry.Iso20022.DedupTTLH
+		if dedupH < 72 {
+			dedupH = 72
+		}
+		isDup = g.dedup.SeenOrAddWithTTL(req.Envelope.IdempotencyKey, time.Duration(dedupH)*time.Hour)
 	} else {
 		isDup = g.dedup.SeenOrAdd(req.Envelope.IdempotencyKey)
 	}

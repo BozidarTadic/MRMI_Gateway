@@ -14,6 +14,8 @@ type DLQEntry struct {
 	FirstSeenUnix   int64  `json:"first_seen_unix"`
 	LastAttemptUnix int64  `json:"last_attempt_unix"`
 	Payload         []byte `json:"payload,omitempty"`
+	Reason          string `json:"reason,omitempty"`       // e.g. "outside_cutoff_window"
+	NextOpenUnix    int64  `json:"next_open_unix,omitempty"` // unix ms of next processing window open
 }
 
 // AuditEntry mirrors the audit log row persisted to the store.

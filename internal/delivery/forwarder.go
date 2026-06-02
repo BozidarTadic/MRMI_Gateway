@@ -71,9 +71,13 @@ func (f *Forwarder) PeersFor(recipientRegion string) []config.PeerConfig {
 func (f *Forwarder) Forward(ctx context.Context, env core.Envelope) (string, error) {
 	// iso20022 cutoff window check: DLQ immediately if outside the processing window (ADR-016).
 	if env.SchemaType == schema.Iso20022 {
-		if err := f.checkCutoffWindow(env); err != nil {
+		if nextOpen, err := f.checkCutoffWindow(env); err != nil {
 			if f.dlq != nil {
-				f.dlq.Append(DLQEntry{Envelope: env, PeerAddr: ""})
+				e := DLQEntry{Envelope: env, Reason: "outside_cutoff_window"}
+				if !nextOpen.IsZero() {
+					e.NextOpenUnix = nextOpen.UnixMilli()
+				}
+				f.dlq.Append(e)
 			}
 			return "", err
 		}
@@ -114,26 +118,29 @@ func (f *Forwarder) Forward(ctx context.Context, env core.Envelope) (string, err
 	return "", fmt.Errorf("all peers exhausted for region %q", env.RecipientRegion)
 }
 
-// checkCutoffWindow returns an error when the envelope falls outside the configured
-// iso20022 processing window for its SRC-DST corridor. No configured window = allow.
-func (f *Forwarder) checkCutoffWindow(env core.Envelope) error {
+// checkCutoffWindow returns an error (and the next open time) when the envelope falls
+// outside the configured iso20022 processing window for its SRC-DST corridor.
+// Returns (zero, nil) when no window is configured for the corridor.
+func (f *Forwarder) checkCutoffWindow(env core.Envelope) (time.Time, error) {
 	windows := f.cfg.SchemaRegistry.Iso20022.CutoffWindows
 	if len(windows) == 0 {
-		return nil
+		return time.Time{}, nil
 	}
 	corridorKey := env.SenderRegion + "-" + env.RecipientRegion
 	w, ok := windows[corridorKey]
 	if !ok {
-		return nil
+		return time.Time{}, nil
 	}
-	inWindow, err := schema.IsInWindow(w, time.Now())
+	now := time.Now()
+	inWindow, err := schema.IsInWindow(w, now)
 	if err != nil {
-		return fmt.Errorf("iso20022: cutoff window check: %w", err)
+		return time.Time{}, fmt.Errorf("iso20022: cutoff window check: %w", err)
 	}
 	if !inWindow {
-		return fmt.Errorf("iso20022: envelope rejected: outside processing window for corridor %s", corridorKey)
+		nextOpen, _ := schema.NextOpen(w, now)
+		return nextOpen, fmt.Errorf("iso20022: envelope rejected: outside processing window for corridor %s", corridorKey)
 	}
-	return nil
+	return time.Time{}, nil
 }
 
 // reorderByHint moves the first peer whose Region matches hint to the front.

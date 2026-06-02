@@ -397,6 +397,8 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 			EnvelopeID      string `json:"envelope_id"`
 			SenderRegion    string `json:"sender_region"`
 			RecipientRegion string `json:"recipient_region"`
+			Reason          string `json:"reason,omitempty"`
+			NextOpenUnix    int64  `json:"next_open_unix,omitempty"`
 		}
 		out := make([]dlqDTO, len(entries))
 		for i, e := range entries {
@@ -414,6 +416,8 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 				EnvelopeID:      e.Envelope.IdempotencyKey,
 				SenderRegion:    e.Envelope.SenderRegion,
 				RecipientRegion: e.Envelope.RecipientRegion,
+				Reason:          e.Reason,
+				NextOpenUnix:    e.NextOpenUnix,
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")

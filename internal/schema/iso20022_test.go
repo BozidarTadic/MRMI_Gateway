@@ -116,6 +116,48 @@ func TestIsInWindow_ExactOpenBoundaryIsInside(t *testing.T) {
 	}
 }
 
+func TestNextOpen_NormalWindow_BeforeOpen(t *testing.T) {
+	// 07:00 UTC, window 08:00-17:00 → next open is today at 08:00
+	w := config.CutoffWindow{Open: "08:00", Close: "17:00", TZ: "UTC"}
+	ts := time.Date(2026, 6, 2, 7, 0, 0, 0, time.UTC)
+	next, err := NextOpen(w, ts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
+	if !next.Equal(want) {
+		t.Fatalf("want %v, got %v", want, next)
+	}
+}
+
+func TestNextOpen_NormalWindow_AfterClose(t *testing.T) {
+	// 18:00 UTC, window 08:00-17:00 → next open is tomorrow at 08:00
+	w := config.CutoffWindow{Open: "08:00", Close: "17:00", TZ: "UTC"}
+	ts := time.Date(2026, 6, 2, 18, 0, 0, 0, time.UTC)
+	next, err := NextOpen(w, ts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := time.Date(2026, 6, 3, 8, 0, 0, 0, time.UTC)
+	if !next.Equal(want) {
+		t.Fatalf("want %v, got %v", want, next)
+	}
+}
+
+func TestNextOpen_MidnightWrapping_Outside(t *testing.T) {
+	// 12:00 UTC, window 22:00-06:00 → next open is today at 22:00
+	w := config.CutoffWindow{Open: "22:00", Close: "06:00", TZ: "UTC"}
+	ts := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
+	next, err := NextOpen(w, ts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := time.Date(2026, 6, 2, 22, 0, 0, 0, time.UTC)
+	if !next.Equal(want) {
+		t.Fatalf("want %v, got %v", want, next)
+	}
+}
+
 func TestParseTOD_Valid(t *testing.T) {
 	cases := []struct {
 		s    string

@@ -15,6 +15,8 @@ type DLQEntry struct {
 	LastErr         error
 	FirstSeenUnix   int64
 	LastAttemptUnix int64
+	Reason          string // e.g. "outside_cutoff_window"; empty = normal exhaustion
+	NextOpenUnix    int64  // unix ms of next processing-window open; 0 if not applicable
 }
 
 // DLQ is an in-memory dead-letter queue for envelopes that could not be forwarded.

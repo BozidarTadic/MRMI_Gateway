@@ -7,6 +7,7 @@ import (
 
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/core"
+	"MRMI_Gateway/internal/schema"
 )
 
 func peers(entries map[string]config.PeerConfig) config.Config {
@@ -173,5 +174,114 @@ func TestForward_NoPeerReturnsError(t *testing.T) {
 	_, err := f.Forward(context.Background(), core.Envelope{RecipientRegion: "XX"})
 	if err == nil {
 		t.Fatal("expected error when no peer available")
+	}
+}
+
+func TestForward_Iso20022_OutsideCutoffWindow_GoesToDLQ(t *testing.T) {
+	cfg := peers(map[string]config.PeerConfig{
+		"RU": {Region: "RU", Addr: "ru:7777", NodeScope: "regional"},
+	})
+	// Window 08:00-09:00 UTC — use a time that is definitely outside (23:00).
+	// We test the corridor RS-RU.
+	cfg.SchemaRegistry.Iso20022.CutoffWindows = map[string]config.CutoffWindow{
+		"RS-RU": {Open: "08:00", Close: "09:00", TZ: "UTC"},
+	}
+
+	dlq := NewDLQ()
+	f := NewForwarder(cfg, dlq, nil, func(_ context.Context, _ string, _ core.Envelope) (string, error) {
+		return "ok", nil
+	})
+
+	env := core.Envelope{
+		IdempotencyKey:  "iso-cutoff-test",
+		SchemaType:      schema.Iso20022,
+		SenderRegion:    "RS",
+		RecipientRegion: "RU",
+	}
+
+	// Override the corridor check for testing by using a window that is always closed
+	// at any point in the day (open == close makes no valid window, but we rely on
+	// the fact that 08:00-09:00 is a narrow window almost always outside).
+	// A more deterministic approach: configure a past-only window by checking if
+	// the forwarder correctly DLQs when IsInWindow returns false.
+	// For a portable test we use the closed window trick: Open=Close means
+	// nothing is inside. Actually with our logic open<close means [open,close) —
+	// if open==close the window is empty. Let's just set 00:00-00:01.
+	cfg.SchemaRegistry.Iso20022.CutoffWindows = map[string]config.CutoffWindow{
+		"RS-RU": {Open: "00:00", Close: "00:01", TZ: "UTC"},
+	}
+	f = NewForwarder(cfg, dlq, nil, func(_ context.Context, _ string, _ core.Envelope) (string, error) {
+		return "ok", nil
+	})
+
+	_, err := f.Forward(context.Background(), env)
+	if err == nil {
+		t.Fatal("expected error when outside cutoff window")
+	}
+
+	if dlq.Size() == 0 {
+		t.Fatal("expected DLQ entry when outside cutoff window")
+	}
+	entry := dlq.Entries()[0]
+	if entry.Reason != "outside_cutoff_window" {
+		t.Fatalf("expected reason %q, got %q", "outside_cutoff_window", entry.Reason)
+	}
+	if entry.NextOpenUnix == 0 {
+		t.Fatal("expected NextOpenUnix to be set")
+	}
+}
+
+func TestForward_Iso20022_InsideCutoffWindow_Proceeds(t *testing.T) {
+	// Window covering the full day: 00:00-23:59 — always inside.
+	cfg := peers(map[string]config.PeerConfig{
+		"RU": {Region: "RU", Addr: "ru:7777", NodeScope: "regional"},
+	})
+	cfg.SchemaRegistry.Iso20022.CutoffWindows = map[string]config.CutoffWindow{
+		"RS-RU": {Open: "00:00", Close: "23:59", TZ: "UTC"},
+	}
+
+	dlq := NewDLQ()
+	f := NewForwarder(cfg, dlq, nil, func(_ context.Context, _ string, _ core.Envelope) (string, error) {
+		return "peer-hash", nil
+	})
+
+	_, err := f.Forward(context.Background(), core.Envelope{
+		IdempotencyKey:  "iso-inside-window",
+		SchemaType:      schema.Iso20022,
+		SenderRegion:    "RS",
+		RecipientRegion: "RU",
+	})
+	if err != nil {
+		t.Fatalf("expected success inside window, got: %v", err)
+	}
+	if dlq.Size() != 0 {
+		t.Fatal("expected no DLQ entry when inside window")
+	}
+}
+
+func TestReorderByHint_MovesMatchToFront(t *testing.T) {
+	peers := []config.PeerConfig{
+		{Region: "RU", Addr: "ru:7777", NodeScope: "regional"},
+		{Region: "BANKDE22", Addr: "de:7777", NodeScope: "global"},
+		{Region: "global-01", Addr: "global:7777", NodeScope: "global"},
+	}
+
+	got := reorderByHint(peers, "BANKDE22")
+	if got[0].Region != "BANKDE22" {
+		t.Fatalf("expected BANKDE22 first, got %q", got[0].Region)
+	}
+	if got[1].Region != "RU" {
+		t.Fatalf("expected RU second, got %q", got[1].Region)
+	}
+}
+
+func TestReorderByHint_NoMatch_Unchanged(t *testing.T) {
+	peerList := []config.PeerConfig{
+		{Region: "RU", Addr: "ru:7777", NodeScope: "regional"},
+		{Region: "global-01", Addr: "global:7777", NodeScope: "global"},
+	}
+	got := reorderByHint(peerList, "NOTEXIST")
+	if got[0].Region != "RU" {
+		t.Fatalf("expected RU first (unchanged), got %q", got[0].Region)
 	}
 }
