@@ -18,6 +18,24 @@ class AutoAcceptMode(str, Enum):
     AUTO_ALL = "auto_all"
 
 
+class SchemaType(str, Enum):
+    """Envelope schema type constants (ADR-015).
+
+    For custom domain types use :func:`SchemaType.custom` which returns a
+    plain ``"custom:<identifier>"`` string accepted by the gateway.
+    """
+
+    MESSAGING = "messaging"
+    ISO20022 = "iso20022"
+    HL7FHIR = "hl7fhir"
+    EDIFACT = "edifact"
+
+    @staticmethod
+    def custom(identifier: str) -> str:
+        """Return the wire string for a custom schema type, e.g. ``"custom:my-schema"``."""
+        return f"custom:{identifier}"
+
+
 @dataclass
 class SendEnvelopeRequest:
     idempotency_key: str
@@ -26,19 +44,33 @@ class SendEnvelopeRequest:
     trust_tier: int = 0
     payload: Optional[bytes] = None
     sender_identity: Optional[bytes] = None
+    schema_type: SchemaType | str = SchemaType.MESSAGING
+    schema_version: str = "1.0.0"
+    routing_hint: Optional[str] = None  # BIC prefix for iso20022 path optimisation
 
     def to_dict(self) -> dict:
         import base64
+        # Use .value for enum members so the wire string is always correct on
+        # Python 3.9/3.10 (where str(SchemaType.X) returns "SchemaType.X").
+        schema_type_wire = (
+            self.schema_type.value
+            if isinstance(self.schema_type, SchemaType)
+            else self.schema_type
+        )
         d: dict = {
             "idempotency_key": self.idempotency_key,
             "sender_region": self.sender_region,
             "recipient_region": self.recipient_region,
             "trust_tier": self.trust_tier,
+            "schema_type": schema_type_wire,
+            "schema_version": self.schema_version,
         }
         if self.payload is not None:
             d["payload"] = base64.b64encode(self.payload).decode()
         if self.sender_identity is not None:
             d["sender_identity"] = base64.b64encode(self.sender_identity).decode()
+        if self.routing_hint is not None:
+            d["routing_hint"] = self.routing_hint
         return d
 
 
@@ -156,6 +188,8 @@ class DlqEntry:
     envelope_id: str
     sender_region: str
     recipient_region: str
+    reason: Optional[str] = None          # e.g. "outside_cutoff_window"
+    next_open_unix: int = 0               # unix ms of next processing-window open
 
     @classmethod
     def from_dict(cls, d: dict) -> "DlqEntry":
@@ -169,6 +203,8 @@ class DlqEntry:
             envelope_id=d.get("envelope_id", ""),
             sender_region=d.get("sender_region", ""),
             recipient_region=d.get("recipient_region", ""),
+            reason=d.get("reason"),
+            next_open_unix=d.get("next_open_unix", 0),
         )
 
 
