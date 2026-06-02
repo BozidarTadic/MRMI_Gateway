@@ -30,3 +30,7 @@ Each file documents the decisions **introduced** in that version. The v0.8 file 
 ## Normative specification
 
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md) — Implementation-independent envelope contract, policy engine interface, audit log format, mTLS requirements, and conformance levels (v0.1)
+
+## Legal analysis
+
+- [FINANCIAL_CORRIDOR_LEGAL_ANALYSIS.md](FINANCIAL_CORRIDOR_LEGAL_ANALYSIS.md) — ISO 20022 corridor compliance framing per jurisdiction (RU, RS, BY); go/no-go recommendations for v0.2 launch

@@ -201,6 +201,8 @@ tz    = "Europe/Belgrade"
 ### Compliance Note
 
 > The `iso20022` adapter provides technical infrastructure for financial message routing. It does not constitute a payment system, a banking licence, or a money transmission service. Operators must obtain all applicable regulatory approvals. Legal accountability rests entirely with the operator.
+>
+> A jurisdiction-by-jurisdiction legal framing for the RU, RS, and BY corridors is maintained in [`docs/FINANCIAL_CORRIDOR_LEGAL_ANALYSIS.md`](FINANCIAL_CORRIDOR_LEGAL_ANALYSIS.md). Go/no-go recommendations: **RS corridor — GO**; **RU corridor — CONDITIONAL GO**; **BY corridor — CONDITIONAL GO** (higher gate: NBRB disclosure + sanctions programme required).
 
 ---
 
