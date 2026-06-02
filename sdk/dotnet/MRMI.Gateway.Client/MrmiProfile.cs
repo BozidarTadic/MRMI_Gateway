@@ -23,6 +23,28 @@ public enum DiscoveryQueryType
     AppId,
 }
 
+/// <summary>Domain adapter that classifies the envelope payload format (ADR-015).</summary>
+public enum SchemaType
+{
+    /// <summary>Default messaging envelope — backward-compatible with v0.8 envelopes that omit schema_type.</summary>
+    Messaging,
+
+    /// <summary>ISO 20022 financial messaging (pacs, camt, pain, …).</summary>
+    Iso20022,
+
+    /// <summary>HL7 FHIR healthcare data exchange.</summary>
+    Hl7Fhir,
+
+    /// <summary>UN/EDIFACT trade and business document exchange.</summary>
+    Edifact,
+
+    /// <summary>
+    /// Custom domain adapter. Set <see cref="SendEnvelopeRequest.CustomSchemaId"/> to the
+    /// adapter identifier; the wire value becomes <c>custom:&lt;id&gt;</c>.
+    /// </summary>
+    Custom,
+}
+
 /// <summary>Auto-accept policy sent with a connect request.</summary>
 public enum AutoAcceptMode
 {

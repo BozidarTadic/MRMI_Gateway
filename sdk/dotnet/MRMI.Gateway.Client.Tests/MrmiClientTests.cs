@@ -432,6 +432,112 @@ public sealed class MrmiClientTests
 
         await Assert.ThrowsAsync<HttpRequestException>(() => client.DeleteAppAsync("missing"));
     }
+
+    // ── SchemaType enum (ADR-015) ─────────────────────────────────────────────
+
+    [Fact]
+    public void SchemaType_HasFiveValues()
+    {
+        var values = Enum.GetValues<SchemaType>();
+        Assert.Equal(5, values.Length);
+        Assert.Contains(SchemaType.Messaging, values);
+        Assert.Contains(SchemaType.Iso20022, values);
+        Assert.Contains(SchemaType.Hl7Fhir, values);
+        Assert.Contains(SchemaType.Edifact, values);
+        Assert.Contains(SchemaType.Custom, values);
+    }
+
+    [Theory]
+    [InlineData(SchemaType.Messaging, "messaging")]
+    [InlineData(SchemaType.Iso20022,  "iso20022")]
+    [InlineData(SchemaType.Hl7Fhir,   "hl7fhir")]
+    [InlineData(SchemaType.Edifact,   "edifact")]
+    public void SchemaType_WireString_MatchesProtoValue(SchemaType schemaType, string expectedWire)
+    {
+        var req = new SendEnvelopeRequest
+        {
+            IdempotencyKey = "k",
+            SenderRegion = "RS",
+            RecipientRegion = "RU",
+            SchemaType = schemaType,
+        };
+        var json = JsonSerializer.Serialize(req);
+        var doc = JsonDocument.Parse(json);
+        Assert.Equal(expectedWire, doc.RootElement.GetProperty("schema_type").GetString());
+    }
+
+    [Fact]
+    public void SchemaType_Custom_ProducesCustomPrefix()
+    {
+        var req = new SendEnvelopeRequest
+        {
+            IdempotencyKey = "k",
+            SenderRegion = "RS",
+            RecipientRegion = "RU",
+            SchemaType = SchemaType.Custom,
+            CustomSchemaId = "gov-rs-doc-exchange",
+        };
+        var json = JsonSerializer.Serialize(req);
+        var doc = JsonDocument.Parse(json);
+        Assert.Equal("custom:gov-rs-doc-exchange", doc.RootElement.GetProperty("schema_type").GetString());
+    }
+
+    [Fact]
+    public void SchemaVersion_DefaultsToOneZeroZero()
+    {
+        var req = new SendEnvelopeRequest
+        {
+            IdempotencyKey = "k",
+            SenderRegion = "RS",
+            RecipientRegion = "RU",
+        };
+        Assert.Equal("1.0.0", req.SchemaVersion);
+        var json = JsonSerializer.Serialize(req);
+        var doc = JsonDocument.Parse(json);
+        Assert.Equal("1.0.0", doc.RootElement.GetProperty("schema_version").GetString());
+    }
+
+    [Fact]
+    public void SchemaType_DefaultsToMessaging()
+    {
+        var req = new SendEnvelopeRequest
+        {
+            IdempotencyKey = "k",
+            SenderRegion = "RS",
+            RecipientRegion = "RU",
+        };
+        Assert.Equal(SchemaType.Messaging, req.SchemaType);
+        var json = JsonSerializer.Serialize(req);
+        var doc = JsonDocument.Parse(json);
+        Assert.Equal("messaging", doc.RootElement.GetProperty("schema_type").GetString());
+    }
+
+    [Fact]
+    public async Task SendAsync_IncludesSchemaTypeAndVersionInBody()
+    {
+        string? capturedBody = null;
+        var responseJson = """{"decision":"ALLOW","reason":"POLICY_ACCEPTED","profile":"balanced","node_id":"rs-node","audit_root_hash":"","peer_audit_root_hash":""}""";
+        var handler = new CapturingHandler(
+            b => capturedBody = b,
+            HttpStatusCode.OK,
+            responseJson,
+            "application/json");
+
+        using var client = BuildClient(handler);
+        await client.SendAsync(new SendEnvelopeRequest
+        {
+            IdempotencyKey = "schema-test",
+            SenderRegion = "RS",
+            RecipientRegion = "RU",
+            SchemaType = SchemaType.Iso20022,
+            SchemaVersion = "2.0.0",
+        });
+
+        Assert.NotNull(capturedBody);
+        var doc = JsonDocument.Parse(capturedBody!);
+        Assert.Equal("iso20022", doc.RootElement.GetProperty("schema_type").GetString());
+        Assert.Equal("2.0.0", doc.RootElement.GetProperty("schema_version").GetString());
+    }
 }
 
 // ── Test helpers ─────────────────────────────────────────────────────────────

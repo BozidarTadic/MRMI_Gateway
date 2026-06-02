@@ -30,6 +30,35 @@ public sealed class SendEnvelopeRequest
     /// <summary>Opaque sender identity bytes (used for Ed25519 verification).</summary>
     [JsonPropertyName("sender_identity")]
     public byte[]? SenderIdentity { get; init; }
+
+    /// <summary>
+    /// Domain adapter for the payload. Defaults to <see cref="SchemaType.Messaging"/>,
+    /// which is backward-compatible with v0.8 envelopes that omit this field.
+    /// </summary>
+    [JsonIgnore]
+    public SchemaType SchemaType { get; init; } = SchemaType.Messaging;
+
+    /// <summary>
+    /// Required when <see cref="SchemaType"/> is <see cref="SchemaType.Custom"/>.
+    /// Becomes the identifier after the <c>custom:</c> prefix, e.g. <c>gov-rs-doc-exchange</c>.
+    /// </summary>
+    [JsonIgnore]
+    public string? CustomSchemaId { get; init; }
+
+    /// <summary>Semver string for the schema version. Defaults to <c>1.0.0</c>.</summary>
+    [JsonPropertyName("schema_version")]
+    public string SchemaVersion { get; init; } = "1.0.0";
+
+    /// <summary>Wire-format schema_type string derived from <see cref="SchemaType"/>.</summary>
+    [JsonPropertyName("schema_type")]
+    public string SchemaTypeWire => SchemaType switch
+    {
+        SchemaType.Iso20022 => "iso20022",
+        SchemaType.Hl7Fhir  => "hl7fhir",
+        SchemaType.Edifact  => "edifact",
+        SchemaType.Custom   => $"custom:{CustomSchemaId ?? ""}",
+        _                   => "messaging",
+    };
 }
 
 /// <summary>Response from a <see cref="MrmiClient.SendAsync"/> call.</summary>
