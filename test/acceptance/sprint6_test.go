@@ -165,7 +165,7 @@ func TestPeersRegister_AppearsInList(t *testing.T) {
 	defer regResp.Body.Close()
 
 	resp := get(t, base+"/api/v1/peers")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var peers []map[string]any
 	decodeJSON(t, resp.Body, &peers)
 

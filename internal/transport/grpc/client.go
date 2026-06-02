@@ -43,6 +43,7 @@ func Dial(ctx context.Context, target string, tlsCfg *tls.Config) (*Client, erro
 			break
 		}
 		if state == connectivity.Shutdown {
+			_ = conn.Close()
 			return nil, fmt.Errorf("dial %s: connection shut down", target)
 		}
 		if !conn.WaitForStateChange(ctx, state) {

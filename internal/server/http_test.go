@@ -56,7 +56,7 @@ func TestErrorShape_Unauthorized(t *testing.T) {
 			if err != nil {
 				t.Fatalf("request: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusUnauthorized {
 				t.Fatalf("expected 401, got %d", resp.StatusCode)
@@ -101,7 +101,7 @@ func TestErrorShape_ServiceUnavailable(t *testing.T) {
 			if err != nil {
 				t.Fatalf("request: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusServiceUnavailable {
 				t.Fatalf("expected 503, got %d", resp.StatusCode)
@@ -130,7 +130,7 @@ func TestErrorShape_BadRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
@@ -167,7 +167,7 @@ func TestErrorShape_PeersRegister_DistinguishesErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("request: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusBadRequest {
 				t.Fatalf("expected 400, got %d", resp.StatusCode)
@@ -199,7 +199,7 @@ func TestSchemaAdapters_GetListsBuiltins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -235,7 +235,7 @@ func TestSchemaAdapters_PostRegisterCustom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
@@ -259,7 +259,7 @@ func TestSchemaAdapters_PostRejectsBuiltinPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
@@ -280,7 +280,7 @@ func TestSchemaAdapters_DeleteCustom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", resp.StatusCode)
@@ -301,7 +301,7 @@ func TestSchemaAdapters_DeleteBuiltinForbidden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", resp.StatusCode)
@@ -320,7 +320,7 @@ func TestErrorShape_TokenEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", resp.StatusCode)

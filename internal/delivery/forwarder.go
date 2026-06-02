@@ -137,7 +137,12 @@ func (f *Forwarder) checkCutoffWindow(env core.Envelope) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("iso20022: cutoff window check: %w", err)
 	}
 	if !inWindow {
-		nextOpen, _ := schema.NextOpen(w, now)
+		// NextOpen failure (e.g. malformed window config) is non-fatal: we still
+		// reject the envelope but return zero time, so the caller skips NextOpenUnix.
+		var nextOpen time.Time
+		if no, err := schema.NextOpen(w, now); err == nil {
+			nextOpen = no
+		}
 		return nextOpen, fmt.Errorf("iso20022: envelope rejected: outside processing window for corridor %s", corridorKey)
 	}
 	return time.Time{}, nil
