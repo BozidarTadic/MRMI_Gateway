@@ -10,6 +10,7 @@ import (
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/dedup"
 	"MRMI_Gateway/internal/policy"
+	"MRMI_Gateway/internal/schema"
 )
 
 // ErrEmptyIdempotencyKey is returned when SendEnvelope receives a request with no idempotency key.
@@ -119,6 +120,8 @@ func (g *Gateway) SendEnvelope(ctx context.Context, req SendRequest) (SendRespon
 	if req.Envelope.IdempotencyKey == "" {
 		return SendResponse{}, ErrEmptyIdempotencyKey
 	}
+
+	req.Envelope.SchemaType = schema.Normalize(req.Envelope.SchemaType)
 
 	if req.Envelope.IsDummy {
 		g.audit.Append(g.cfg, audit.DecisionDummy, "DUMMY_TRAFFIC", 0,

@@ -8,6 +8,7 @@ import (
 	"MRMI_Gateway/internal/audit"
 	"MRMI_Gateway/internal/config"
 	"MRMI_Gateway/internal/crl"
+	"MRMI_Gateway/internal/schema"
 )
 
 type Engine struct {
@@ -138,10 +139,7 @@ func (e *Engine) evaluateJurisdictionIsolation(cfg config.Config, req Request) (
 		return Result{}, true
 	}
 
-	schemaType := req.SchemaType
-	if strings.TrimSpace(schemaType) == "" {
-		schemaType = "messaging"
-	}
+	schemaType := schema.Normalize(req.SchemaType)
 
 	for _, rule := range rules {
 		if rule.SchemaType != schemaType {
