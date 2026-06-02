@@ -31,6 +31,8 @@ const ReasonJurisdictionIsolationRegion = "JURISDICTION_ISOLATION_REGION_DENIED"
 const ReasonJurisdictionIsolationProfile = "JURISDICTION_ISOLATION_PROFILE_MISMATCH"
 const ReasonHl7FhirNonRegionalNode = "HL7FHIR_NON_REGIONAL_NODE"
 const ReasonHl7FhirRequiresStrictProfile = "HL7FHIR_REQUIRES_STRICT_PROFILE"
+const ReasonEdifactNodeTierDenied = "EDIFACT_NODE_TIER_DENIED"
+const ReasonEdifactRequiresBalancedProfile = "EDIFACT_REQUIRES_BALANCED_PROFILE"
 
 // DiscoveryRequest is the input to EvaluateDiscovery.
 type DiscoveryRequest struct {
@@ -121,6 +123,15 @@ func (e *Engine) Evaluate(req Request) Result {
 	// ADR-015: hl7fhir mandates strict profile + regional node — hardcoded, not overrideable via TOML.
 	if schema.Normalize(req.SchemaType) == schema.Hl7Fhir {
 		if result, ok := e.enforceHl7FhirPolicy(cfg, req); !ok {
+			e.appendAudit(cfg, result, req)
+			return result
+		}
+	}
+
+	// ADR-015: edifact default policy (regional+alliance, balanced profile minimum).
+	// Only applied when the operator has not defined a TOML jurisdiction_isolation rule for "edifact".
+	if schema.Normalize(req.SchemaType) == schema.Edifact && !hasIsolationRule(cfg, schema.Edifact) {
+		if result, ok := e.enforceEdifactDefaults(cfg, req); !ok {
 			e.appendAudit(cfg, result, req)
 			return result
 		}
@@ -246,6 +257,40 @@ func (e *Engine) enforceHl7FhirPolicy(cfg config.Config, _ Request) (Result, boo
 		}, false
 	}
 	return Result{}, true
+}
+
+// enforceEdifactDefaults applies ADR-015 built-in defaults for edifact when no
+// operator TOML rule overrides them: regional or alliance nodes only, and the
+// profile must be at least "balanced" (i.e. balanced or strict).
+func (e *Engine) enforceEdifactDefaults(cfg config.Config, _ Request) (Result, bool) {
+	scope := cfg.Node.NodeScope
+	if scope != "regional" && scope != "alliance" {
+		return Result{
+			Decision: DecisionDeny,
+			Reason:   ReasonEdifactNodeTierDenied,
+			Profile:  cfg.Profile.Name,
+		}, false
+	}
+	profile := strings.ToLower(cfg.Profile.Name)
+	if profile != "balanced" && profile != "strict" {
+		return Result{
+			Decision: DecisionDeny,
+			Reason:   ReasonEdifactRequiresBalancedProfile,
+			Profile:  cfg.Profile.Name,
+		}, false
+	}
+	return Result{}, true
+}
+
+// hasIsolationRule reports whether cfg contains a TOML jurisdiction_isolation
+// rule for the given schemaType.
+func hasIsolationRule(cfg config.Config, schemaType string) bool {
+	for _, rule := range cfg.Policy.JurisdictionIsolation.Rules {
+		if rule.SchemaType == schemaType {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Engine) appendAudit(cfg config.Config, result Result, req Request) {
