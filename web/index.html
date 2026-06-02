@@ -53,6 +53,14 @@
   .badge.regional { background: #1e1b4b; color: #818cf8; }
   .badge.alliance { background: #0f172a; color: #38bdf8; }
   .badge.global { background: #1a0533; color: #c084fc; }
+  .badge.builtin { background: #0a2e1a; color: #4ade80; }
+  .badge.custom { background: #2d1b00; color: #fbbf24; }
+  .badge.hardcoded { background: #2d0a0a; color: #f87171; }
+  .adapter-detail { display: none; padding: 10px 16px 14px; border-bottom: 1px solid var(--border); background: var(--bg); font-size: 12px; color: var(--text2); }
+  .adapter-detail.open { display: block; }
+  .policy-grid { display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; margin-top: 6px; }
+  .policy-grid .k { color: var(--text3); }
+  .tier-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-right: 4px; background: var(--bg3); border: 1px solid var(--border); color: var(--text2); }
   .empty { text-align: center; padding: 40px; color: var(--text3); }
   .form-group { margin-bottom: 16px; }
   .form-group label { display: block; font-size: 12px; color: var(--text3); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .4px; }
@@ -89,6 +97,7 @@
     <button onclick="showPage('dlq')">DLQ</button>
     <button onclick="showPage('settings')">Settings</button>
     <button onclick="showPage('apps')">Apps</button>
+    <button onclick="showPage('schema')">Schema Registry</button>
   </nav>
   <div class="auth-area">
     <input id="apiKey" type="password" placeholder="X-MRMI-Key or JWT" value="">
@@ -258,6 +267,50 @@
       <div class="form-group"><label>Webhook Secret</label><input id="new-app-secret" type="password" placeholder="optional HMAC secret"></div>
       <button class="btn" onclick="registerApp()">Register App</button>
       <div id="new-app-result" style="margin-top:12px;font-size:12px;color:var(--green)"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SCHEMA REGISTRY PAGE -->
+<div id="page-schema" class="page">
+  <div class="section" style="margin-bottom:20px">
+    <div class="section-header">
+      <h2>Registered Adapters</h2>
+      <button class="btn secondary sm" onclick="loadAdapters()">Refresh</button>
+    </div>
+    <div class="section-body">
+      <table>
+        <thead><tr><th>Schema Type</th><th>Version</th><th>Kind</th><th>Allow Tiers</th><th>Require Profile</th><th>Constraints</th><th>Actions</th></tr></thead>
+        <tbody id="adapters-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><h2>Register Custom Adapter</h2></div>
+    <div style="padding:16px 20px;max-width:560px">
+      <div class="notice info">Custom adapters must use the <code>custom:</code> prefix (e.g. <code>custom:gov-rs-doc-exchange</code>). Built-in adapters are read-only.</div>
+      <div class="form-group"><label>Schema Type</label><input id="new-adapter-type" placeholder="custom:my-domain"></div>
+      <div class="form-group"><label>Version</label><input id="new-adapter-version" placeholder="1.0.0" value="1.0.0"></div>
+      <div class="form-group"><label>Description</label><input id="new-adapter-desc" placeholder="Short description of this adapter"></div>
+      <div class="form-group">
+        <label>Allow Tiers</label>
+        <div style="display:flex;gap:10px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;color:var(--text2);font-size:13px;text-transform:none;letter-spacing:0"><input type="checkbox" id="tier-regional" checked> regional</label>
+          <label style="display:flex;align-items:center;gap:6px;color:var(--text2);font-size:13px;text-transform:none;letter-spacing:0"><input type="checkbox" id="tier-alliance"> alliance</label>
+          <label style="display:flex;align-items:center;gap:6px;color:var(--text2);font-size:13px;text-transform:none;letter-spacing:0"><input type="checkbox" id="tier-global"> global</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Require Profile</label>
+        <select id="new-adapter-profile">
+          <option value="">None</option>
+          <option value="balanced">balanced</option>
+          <option value="strict">strict</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Contact</label><input id="new-adapter-contact" placeholder="owner@example.com (optional)"></div>
+      <button class="btn" onclick="registerAdapter()">Register Adapter</button>
     </div>
   </div>
 </div>

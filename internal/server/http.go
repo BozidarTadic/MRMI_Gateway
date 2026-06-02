@@ -50,6 +50,53 @@ func (rp *RuntimePeers) All() []config.PeerConfig {
 	return out
 }
 
+// RuntimeAdapters is a thread-safe store for custom schema adapters registered
+// via POST /api/v1/schema/adapters. Built-in adapters are not stored here.
+type RuntimeAdapters struct {
+	mu       sync.RWMutex
+	adapters map[string]CustomAdapterEntry
+}
+
+// CustomAdapterEntry holds the metadata for a custom schema adapter registered
+// at runtime via POST /api/v1/schema/adapters.
+type CustomAdapterEntry struct {
+	SchemaType     string   `json:"schema_type"`
+	SchemaVersion  string   `json:"schema_version"`
+	Description    string   `json:"description"`
+	AllowTiers     []string `json:"allow_tiers"`
+	RequireProfile string   `json:"require_profile"`
+	Contact        string   `json:"contact"`
+	RegisteredAt   int64    `json:"registered_at"`
+}
+
+func NewRuntimeAdapters() *RuntimeAdapters {
+	return &RuntimeAdapters{adapters: make(map[string]CustomAdapterEntry)}
+}
+
+func (ra *RuntimeAdapters) Register(a CustomAdapterEntry) {
+	ra.mu.Lock()
+	ra.adapters[a.SchemaType] = a
+	ra.mu.Unlock()
+}
+
+func (ra *RuntimeAdapters) Delete(schemaType string) bool {
+	ra.mu.Lock()
+	defer ra.mu.Unlock()
+	_, ok := ra.adapters[schemaType]
+	delete(ra.adapters, schemaType)
+	return ok
+}
+
+func (ra *RuntimeAdapters) All() []CustomAdapterEntry {
+	ra.mu.RLock()
+	defer ra.mu.RUnlock()
+	out := make([]CustomAdapterEntry, 0, len(ra.adapters))
+	for _, a := range ra.adapters {
+		out = append(out, a)
+	}
+	return out
+}
+
 // RuntimeApps is a thread-safe store for dynamically-registered apps (v0.3).
 type RuntimeApps struct {
 	mu   sync.RWMutex
@@ -101,8 +148,9 @@ type Deps struct {
 	CRL            *crl.Store
 	Inbox          *inbox.Inbox
 	Registry       *registry.Registry
-	RuntimePeers   *RuntimePeers
-	RuntimeApps    *RuntimeApps
+	RuntimePeers    *RuntimePeers
+	RuntimeApps     *RuntimeApps
+	RuntimeAdapters *RuntimeAdapters
 	OnConfigReload func() error                  // called by POST /api/v1/config/reload
 	OnConfigSave   func(cfg config.Config) error // called by PUT /api/v1/config
 }
@@ -788,6 +836,171 @@ func NewHTTPServer(cfg config.Config, deps Deps) *HTTPServer {
 		appID := r.PathValue("app_id")
 		if !deps.RuntimeApps.Delete(appID) {
 			writeJSONError(w, "app not found", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	// GET /api/v1/schema/adapters — list built-in and custom schema adapters with their policies.
+	mux.HandleFunc("GET /api/v1/schema/adapters", auth(func(w http.ResponseWriter, _ *http.Request) {
+		type adapterDTO struct {
+			SchemaType           string   `json:"schema_type"`
+			SchemaVersion        string   `json:"schema_version"`
+			Builtin              bool     `json:"builtin"`
+			Status               string   `json:"status"`
+			Description          string   `json:"description"`
+			AllowTiers           []string `json:"allow_tiers"`
+			AllowJurisdictions   []string `json:"allow_jurisdictions"`
+			RequireProfile       string   `json:"require_profile"`
+			HardcodedConstraints bool     `json:"hardcoded_constraints"`
+			Contact              string   `json:"contact,omitempty"`
+		}
+
+		// Helper: find TOML jurisdiction_isolation rule for a schema type.
+		tomlRule := func(schemaType string) *config.JurisdictionIsolationRule {
+			for i, r := range cfg.Policy.JurisdictionIsolation.Rules {
+				if r.SchemaType == schemaType {
+					return &cfg.Policy.JurisdictionIsolation.Rules[i]
+				}
+			}
+			return nil
+		}
+		tiers := func(r *config.JurisdictionIsolationRule) []string {
+			if r != nil && len(r.AllowTiers) > 0 {
+				return r.AllowTiers
+			}
+			return []string{}
+		}
+		jurisdictions := func(r *config.JurisdictionIsolationRule) []string {
+			if r != nil && len(r.AllowJurisdictions) > 0 {
+				return r.AllowJurisdictions
+			}
+			return []string{}
+		}
+		profile := func(r *config.JurisdictionIsolationRule) string {
+			if r != nil {
+				return r.RequireProfile
+			}
+			return ""
+		}
+
+		ruMessaging := tomlRule("messaging")
+		ruIso20022  := tomlRule("iso20022")
+		ruEdifact   := tomlRule("edifact")
+
+		out := []adapterDTO{
+			{
+				SchemaType:    "messaging",
+				SchemaVersion: "1.0.0",
+				Builtin:       true,
+				Status:        "enabled",
+				Description:   "Default cross-border messaging — backward-compatible with v0.8 envelopes.",
+				AllowTiers:    tiers(ruMessaging),
+				AllowJurisdictions: jurisdictions(ruMessaging),
+				RequireProfile: profile(ruMessaging),
+			},
+			{
+				SchemaType:    "iso20022",
+				SchemaVersion: "1.0.0",
+				Builtin:       true,
+				Status:        "enabled",
+				Description:   "ISO 20022 financial messages (ADR-016): 72h dedup, retain_long, settlement finality.",
+				AllowTiers:    tiers(ruIso20022),
+				AllowJurisdictions: jurisdictions(ruIso20022),
+				RequireProfile: profile(ruIso20022),
+			},
+			{
+				SchemaType:           "hl7fhir",
+				SchemaVersion:        "1.0.0",
+				Builtin:              true,
+				Status:               "enabled",
+				Description:          "HL7 FHIR R4 health data — hardcoded regional+strict constraints (ADR-015).",
+				AllowTiers:           []string{"regional"},
+				AllowJurisdictions:   jurisdictions(tomlRule("hl7fhir")),
+				RequireProfile:       "strict",
+				HardcodedConstraints: true,
+			},
+			{
+				SchemaType:    "edifact",
+				SchemaVersion: "1.0.0",
+				Builtin:       true,
+				Status:        "enabled",
+				Description:   "UN/EDIFACT logistics and supply-chain — regional+alliance by default (ADR-015).",
+				AllowTiers: func() []string {
+					if ruEdifact != nil && len(ruEdifact.AllowTiers) > 0 {
+						return ruEdifact.AllowTiers
+					}
+					return []string{"regional", "alliance"}
+				}(),
+				AllowJurisdictions: jurisdictions(ruEdifact),
+				RequireProfile: func() string {
+					if ruEdifact != nil && ruEdifact.RequireProfile != "" {
+						return ruEdifact.RequireProfile
+					}
+					return "balanced"
+				}(),
+			},
+		}
+
+		// Append custom adapters registered at runtime.
+		if deps.RuntimeAdapters != nil {
+			for _, a := range deps.RuntimeAdapters.All() {
+				out = append(out, adapterDTO{
+					SchemaType:         a.SchemaType,
+					SchemaVersion:      a.SchemaVersion,
+					Builtin:            false,
+					Status:             "enabled",
+					Description:        a.Description,
+					AllowTiers:         a.AllowTiers,
+					AllowJurisdictions: []string{},
+					RequireProfile:     a.RequireProfile,
+					Contact:            a.Contact,
+				})
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	}))
+
+	// POST /api/v1/schema/adapters — register a custom adapter (operator auth required).
+	mux.HandleFunc("POST /api/v1/schema/adapters", authOp(func(w http.ResponseWriter, r *http.Request) {
+		if deps.RuntimeAdapters == nil {
+			writeJSONError(w, "schema adapter registry not available", http.StatusServiceUnavailable)
+			return
+		}
+		var req CustomAdapterEntry
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSONError(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if !strings.HasPrefix(req.SchemaType, "custom:") {
+			writeJSONError(w, "schema_type must start with 'custom:'", http.StatusBadRequest)
+			return
+		}
+		if req.SchemaVersion == "" {
+			req.SchemaVersion = "1.0.0"
+		}
+		req.RegisteredAt = time.Now().Unix()
+		deps.RuntimeAdapters.Register(req)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(req)
+	}))
+
+	// DELETE /api/v1/schema/adapters/{type} — deregister a custom adapter.
+	mux.HandleFunc("DELETE /api/v1/schema/adapters/{type}", authOp(func(w http.ResponseWriter, r *http.Request) {
+		if deps.RuntimeAdapters == nil {
+			writeJSONError(w, "schema adapter registry not available", http.StatusServiceUnavailable)
+			return
+		}
+		schemaType := r.PathValue("type")
+		if !strings.HasPrefix(schemaType, "custom:") {
+			writeJSONError(w, "built-in adapters cannot be removed", http.StatusForbidden)
+			return
+		}
+		if !deps.RuntimeAdapters.Delete(schemaType) {
+			writeJSONError(w, "adapter not found", http.StatusNotFound)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

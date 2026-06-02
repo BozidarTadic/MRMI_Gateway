@@ -180,6 +180,134 @@ func TestErrorShape_PeersRegister_DistinguishesErrors(t *testing.T) {
 	}
 }
 
+func newTestServerWithAdapters(t *testing.T) (*httptest.Server, *server.RuntimeAdapters) {
+	t.Helper()
+	cfg := config.DefaultBalancedConfig()
+	cfg.API.APIKey = "test-key"
+	ra := server.NewRuntimeAdapters()
+	srv := server.NewHTTPServer(cfg, server.Deps{RuntimeAdapters: ra})
+	return httptest.NewServer(srv.Handler), ra
+}
+
+func TestSchemaAdapters_GetListsBuiltins(t *testing.T) {
+	ts, _ := newTestServerWithAdapters(t)
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/schema/adapters", nil)
+	req.Header.Set("X-MRMI-Key", "test-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var adapters []struct {
+		SchemaType string `json:"schema_type"`
+		Builtin    bool   `json:"builtin"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&adapters); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	types := make(map[string]bool)
+	for _, a := range adapters {
+		types[a.SchemaType] = a.Builtin
+	}
+	for _, want := range []string{"messaging", "iso20022", "hl7fhir", "edifact"} {
+		if !types[want] {
+			t.Errorf("built-in adapter %q missing or not marked builtin", want)
+		}
+	}
+}
+
+func TestSchemaAdapters_PostRegisterCustom(t *testing.T) {
+	ts, ra := newTestServerWithAdapters(t)
+	defer ts.Close()
+
+	body := `{"schema_type":"custom:test-adapter","schema_version":"2.0.0","description":"test","allow_tiers":["regional"],"require_profile":"balanced"}`
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/schema/adapters",
+		strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-MRMI-Key", "test-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+	all := ra.All()
+	if len(all) != 1 || all[0].SchemaType != "custom:test-adapter" {
+		t.Fatalf("adapter not stored; got %v", all)
+	}
+}
+
+func TestSchemaAdapters_PostRejectsBuiltinPrefix(t *testing.T) {
+	ts, _ := newTestServerWithAdapters(t)
+	defer ts.Close()
+
+	body := `{"schema_type":"iso20022","schema_version":"1.0.0"}`
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/schema/adapters",
+		strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-MRMI-Key", "test-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSchemaAdapters_DeleteCustom(t *testing.T) {
+	ts, ra := newTestServerWithAdapters(t)
+	defer ts.Close()
+
+	// Pre-register a custom adapter directly in the store.
+	ra.Register(server.CustomAdapterEntry{SchemaType: "custom:to-delete", SchemaVersion: "1.0.0"})
+
+	req, _ := http.NewRequest(http.MethodDelete,
+		ts.URL+"/api/v1/schema/adapters/custom:to-delete", nil)
+	req.Header.Set("X-MRMI-Key", "test-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", resp.StatusCode)
+	}
+	if len(ra.All()) != 0 {
+		t.Fatal("adapter should have been removed")
+	}
+}
+
+func TestSchemaAdapters_DeleteBuiltinForbidden(t *testing.T) {
+	ts, _ := newTestServerWithAdapters(t)
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodDelete,
+		ts.URL+"/api/v1/schema/adapters/hl7fhir", nil)
+	req.Header.Set("X-MRMI-Key", "test-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
 func TestErrorShape_TokenEndpoint(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()

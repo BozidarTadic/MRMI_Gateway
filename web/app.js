@@ -39,7 +39,7 @@ function toast(msg, isError) {
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 
-const PAGE_ORDER = ['status', 'audit', 'dlq', 'settings', 'apps'];
+const PAGE_ORDER = ['status', 'audit', 'dlq', 'settings', 'apps', 'schema'];
 
 function showPage(name) {
 	document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -54,6 +54,7 @@ function showPage(name) {
 	if (name === 'dlq')      loadDLQ();
 	if (name === 'settings') loadSettings();
 	if (name === 'apps')     loadApps();
+	if (name === 'schema')   loadAdapters();
 }
 
 function saveKey() {
@@ -452,6 +453,119 @@ async function deleteApp(appID) {
 		loadApps();
 	} catch (e) {
 		toast('Delete failed: ' + e.message, true);
+	}
+}
+
+// ── Schema Registry page ──────────────────────────────────────────────────────
+
+async function loadAdapters() {
+	const tbody = document.getElementById('adapters-tbody');
+	tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+	try {
+		let adapters = await api('GET', '/api/v1/schema/adapters');
+		if (!adapters) adapters = [];
+		if (adapters.length === 0) {
+			tbody.innerHTML = '<tr><td colspan="7" class="empty">No adapters</td></tr>';
+			return;
+		}
+		tbody.innerHTML = adapters.map((a, i) => {
+			const kindBadge = a.builtin
+				? `<span class="badge builtin">built-in</span>`
+				: `<span class="badge custom">custom</span>`;
+			const constraintBadge = a.hardcoded_constraints
+				? `<span class="badge hardcoded">hardcoded</span>`
+				: a.builtin ? `<span class="badge" style="background:var(--bg3);color:var(--text3)">default</span>`
+				: `<span class="badge" style="background:var(--bg3);color:var(--text3)">configurable</span>`;
+			const tiers = (a.allow_tiers || []).length > 0
+				? a.allow_tiers.map(t => `<span class="tier-pill">${esc(t)}</span>`).join('')
+				: '<span style="color:var(--text3)">all</span>';
+			const profile = a.require_profile ? esc(a.require_profile) : '<span style="color:var(--text3)">—</span>';
+			const actions = a.builtin
+				? '<span style="color:var(--text3);font-size:11px">read-only</span>'
+				: `<button class="btn sm danger" onclick="deleteAdapter('${esc(a.schema_type)}')">Remove</button>`;
+			const rowId = 'adapter-detail-' + i;
+			return `<tr onclick="toggleAdapterDetail('${rowId}')" style="cursor:pointer">
+				<td style="font-weight:600;font-family:monospace;font-size:12px">${esc(a.schema_type)}</td>
+				<td style="font-size:11px;color:var(--text3)">${esc(a.schema_version || '—')}</td>
+				<td>${kindBadge}</td>
+				<td>${tiers}</td>
+				<td>${profile}</td>
+				<td>${constraintBadge}</td>
+				<td onclick="event.stopPropagation()">${actions}</td>
+			</tr>
+			<tr><td colspan="7" style="padding:0">
+				<div id="${rowId}" class="adapter-detail">
+					<div style="color:var(--text2);margin-bottom:6px">${esc(a.description || '')}</div>
+					<div class="policy-grid">
+						<span class="k">Allow tiers</span>
+						<span>${(a.allow_tiers || []).length > 0 ? a.allow_tiers.map(t => `<span class="tier-pill">${esc(t)}</span>`).join('') : '<em style="color:var(--text3)">all tiers</em>'}</span>
+						<span class="k">Require profile</span>
+						<span>${a.require_profile ? esc(a.require_profile) : '<em style="color:var(--text3)">none</em>'}</span>
+						<span class="k">Jurisdictions</span>
+						<span>${(a.allow_jurisdictions || []).length > 0 ? a.allow_jurisdictions.map(j => `<span class="tier-pill">${esc(j)}</span>`).join('') : '<em style="color:var(--text3)">all</em>'}</span>
+						${a.contact ? `<span class="k">Contact</span><span>${esc(a.contact)}</span>` : ''}
+						${a.hardcoded_constraints ? `<span class="k">Note</span><span style="color:var(--red)">Hardcoded constraints cannot be relaxed via TOML.</span>` : ''}
+					</div>
+				</div>
+			</td></tr>`;
+		}).join('');
+	} catch (e) {
+		tbody.innerHTML = `<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`;
+	}
+}
+
+function toggleAdapterDetail(id) {
+	const el = document.getElementById(id);
+	if (el) el.classList.toggle('open');
+}
+
+async function registerAdapter() {
+	const schemaType = document.getElementById('new-adapter-type').value.trim();
+	const version    = document.getElementById('new-adapter-version').value.trim() || '1.0.0';
+	const desc       = document.getElementById('new-adapter-desc').value.trim();
+	const contact    = document.getElementById('new-adapter-contact').value.trim();
+	const profile    = document.getElementById('new-adapter-profile').value;
+
+	if (!schemaType) { toast('Schema type is required', true); return; }
+	if (!schemaType.startsWith('custom:')) { toast("Schema type must start with 'custom:'", true); return; }
+
+	const tiers = [];
+	if (document.getElementById('tier-regional').checked) tiers.push('regional');
+	if (document.getElementById('tier-alliance').checked) tiers.push('alliance');
+	if (document.getElementById('tier-global').checked)   tiers.push('global');
+	if (tiers.length === 0) { toast('Select at least one allow tier', true); return; }
+
+	try {
+		await api('POST', '/api/v1/schema/adapters', {
+			schema_type:     schemaType,
+			schema_version:  version,
+			description:     desc,
+			allow_tiers:     tiers,
+			require_profile: profile,
+			contact,
+		});
+		['new-adapter-type','new-adapter-desc','new-adapter-contact'].forEach(id => {
+			document.getElementById(id).value = '';
+		});
+		document.getElementById('new-adapter-version').value = '1.0.0';
+		document.getElementById('new-adapter-profile').value = '';
+		document.getElementById('tier-regional').checked = true;
+		document.getElementById('tier-alliance').checked = false;
+		document.getElementById('tier-global').checked   = false;
+		toast('Adapter registered');
+		loadAdapters();
+	} catch (e) {
+		toast('Register failed: ' + e.message, true);
+	}
+}
+
+async function deleteAdapter(schemaType) {
+	try {
+		await api('DELETE', `/api/v1/schema/adapters/${encodeURIComponent(schemaType)}`);
+		toast(`Adapter "${schemaType}" removed`);
+		loadAdapters();
+	} catch (e) {
+		toast('Remove failed: ' + e.message, true);
 	}
 }
 

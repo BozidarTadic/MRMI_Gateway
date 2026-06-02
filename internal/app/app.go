@@ -287,6 +287,9 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 	// Runtime apps: registered via POST /api/v1/apps/register.
 	runtimeApps := server.NewRuntimeApps()
 
+	// Runtime adapters: custom schema adapters registered via POST /api/v1/schema/adapters.
+	runtimeAdapters := server.NewRuntimeAdapters()
+
 	// Config reload callback: re-reads file and applies to engine.
 	var onReload func() error
 	var onConfigSave func(config.Config) error
@@ -317,7 +320,8 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 		Inbox:          msgInbox,
 		Registry:       reg,
 		RuntimePeers:   runtimePeers,
-		RuntimeApps:    runtimeApps,
+		RuntimeApps:     runtimeApps,
+		RuntimeAdapters: runtimeAdapters,
 		OnConfigReload: onReload,
 		OnConfigSave:   onConfigSave,
 	})
