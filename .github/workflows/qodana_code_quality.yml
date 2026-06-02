@@ -25,8 +25,6 @@ jobs:
           fetch-depth: 0
       - name: 'Qodana Scan'
         uses: JetBrains/qodana-action@v2026.1
-        env:
-          QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
         with:
           args: --baseline qodana.sarif.json
           # When pr-mode is set to true, Qodana analyzes only the files that have been changed
