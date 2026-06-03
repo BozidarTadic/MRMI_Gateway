@@ -197,17 +197,16 @@ func Run(ctx context.Context, cfg config.Config, configPath string) error {
 
 	var fwd core.Forwarder
 	if len(cfg.Network.Peers) > 0 {
+		connPool := grpctransport.NewConnPool(clientTLS)
+		defer connPool.Close()
 		fwd = delivery.NewForwarder(cfg, dlq, tc, func(ctx context.Context, addr string, env core.Envelope) (string, error) {
 			env.SequenceNumber = seqSend.NextSeq(env.RecipientRegion)
 			env.Signature = identity.Sign(signingKey, env)
 
-			dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			defer cancel()
-			client, err := grpctransport.Dial(dialCtx, addr, clientTLS)
+			client, err := connPool.Client(ctx, addr)
 			if err != nil {
-				return "", fmt.Errorf("dial %s: %w", addr, err)
+				return "", fmt.Errorf("connect to %s: %w", addr, err)
 			}
-			defer client.Close()
 			resp, err := client.SendEnvelope(ctx, &grpctransport.SendEnvelopeRequest{
 				Envelope: grpctransport.Envelope{
 					IdempotencyKey:    env.IdempotencyKey,

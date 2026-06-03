@@ -45,11 +45,7 @@ func TestPurge_RemovesExpired(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	idx.Purge()
 
-	idx.mu.Lock()
-	n := len(idx.entries)
-	idx.mu.Unlock()
-
-	if n != 0 {
+	if n := idx.Len(); n != 0 {
 		t.Fatalf("expected 0 entries after purge, got %d", n)
 	}
 }

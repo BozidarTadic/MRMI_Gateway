@@ -14,7 +14,8 @@ import (
 )
 
 type Client struct {
-	conn *grpc.ClientConn
+	conn   *grpc.ClientConn
+	pooled bool
 }
 
 // Dial connects to a gateway gRPC server at target.
@@ -56,6 +57,9 @@ func Dial(ctx context.Context, target string, tlsCfg *tls.Config) (*Client, erro
 }
 
 func (c *Client) Close() error {
+	if c.pooled {
+		return nil
+	}
 	return c.conn.Close()
 }
 
