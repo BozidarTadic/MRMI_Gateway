@@ -1,13 +1,15 @@
 # MRMI Gateway .NET SDK
 
 `MRMI.Gateway.Client` is a .NET client library for the MRMI Gateway management REST API and SSE stream.
+`MRMI.Gateway.Hosting.Aspire` adds .NET Aspire AppHost support for running an MRMI Gateway node as an executable resource.
 
 ## Installation
 
-Reference the project directly (NuGet package coming in v1.0):
+Install from NuGet:
 
-```xml
-<ProjectReference Include="..\MRMI.Gateway.Client\MRMI.Gateway.Client.csproj" />
+```bash
+dotnet add package MRMI.Gateway.Client --version 0.3.0
+dotnet add package MRMI.Gateway.Hosting.Aspire --version 0.3.0
 ```
 
 ## Quick start
@@ -33,6 +35,39 @@ var response = await client.SendAsync(new SendEnvelopeRequest
 
 Console.WriteLine(response.Decision);   // ALLOW
 ```
+
+## Aspire AppHost
+
+Add the hosting package to an Aspire AppHost project:
+
+```bash
+dotnet add package MRMI.Gateway.Hosting.Aspire --version 0.3.0
+```
+
+Then register the MRMI Gateway executable:
+
+```csharp
+using MRMI.Gateway.Hosting.Aspire;
+
+var builder = DistributedApplication.CreateBuilder(args);
+
+var gateway = builder.AddMrmiGateway("mrmi-rs", options =>
+{
+    options.ExecutablePath = "mrmi-gateway";
+    options.ConfigPath = "../../configs/node.rs.local.toml";
+    options.HttpPort = 8080;
+    options.GrpcPort = 7777;
+    options.MetricsPort = 9090;
+    options.ApiKey = "demo-key";
+});
+
+builder.AddProject<Projects.MyApi>("api")
+    .WithMrmiGatewayClientEnvironment(gateway, apiKey: "demo-key");
+
+builder.Build().Run();
+```
+
+The gateway resource exposes endpoints named `http`, `grpc`, and `metrics`, uses `/healthz` for Aspire health checks, and displays the `metrics` endpoint as `/metrics` by default.
 
 ## Schema types (ADR-015)
 

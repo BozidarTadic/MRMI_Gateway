@@ -2,6 +2,7 @@ using MRMI.Demo.Blazor;
 using MRMI.Gateway.Client;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddServiceDefaults();
 
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
@@ -17,6 +18,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStaticFiles();
 app.UseRouting();
+app.MapDefaultEndpoints();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 

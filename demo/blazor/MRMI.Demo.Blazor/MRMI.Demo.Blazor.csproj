@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\aspire\MRMI.Demo.ServiceDefaults\MRMI.Demo.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\..\sdk\dotnet\MRMI.Gateway.Client\MRMI.Gateway.Client.csproj" />
   </ItemGroup>
 

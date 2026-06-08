@@ -121,6 +121,14 @@ powershell -ExecutionPolicy Bypass -File scripts\demo-start.ps1
 
 This starts the RS gateway on `:8080`, the RU gateway on `:8081`, and the Blazor demo UI on `http://localhost:5294`.
 
+**Start the same demo with .NET Aspire as the orchestrator:**
+
+```powershell
+dotnet run --project demo\aspire\MRMI.Demo.AppHost\MRMI.Demo.AppHost.csproj
+```
+
+Open the Aspire dashboard URL printed by the AppHost, then open `mrmi-demo-ui`. Details: [demo/aspire/README.md](demo/aspire/README.md).
+
 ---
 
 ## Configuration

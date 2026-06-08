@@ -6,6 +6,7 @@
 *.dylib
 bin/
 dist/
+NugetCache/
 
 # Go build artifacts
 *.test

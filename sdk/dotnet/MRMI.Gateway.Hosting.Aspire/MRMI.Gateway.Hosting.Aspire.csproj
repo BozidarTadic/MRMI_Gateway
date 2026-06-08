@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>MRMI.Gateway.Hosting.Aspire</RootNamespace>
+    <AssemblyName>MRMI.Gateway.Hosting.Aspire</AssemblyName>
+    <PackageId>MRMI.Gateway.Hosting.Aspire</PackageId>
+    <Version>0.3.0</Version>
+    <Authors>Bozidar Tadic</Authors>
+    <Description>Aspire hosting integration for running MRMI Gateway nodes from .NET Aspire AppHost projects.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/BozidarTadic/MRMI_Gateway</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/BozidarTadic/MRMI_Gateway</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>mrmi gateway aspire distributed-application hosting compliance</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting" Version="13.4.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

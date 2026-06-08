@@ -12,7 +12,12 @@
     <Authors>Božidar Tadić</Authors>
     <Description>Official .NET SDK for the MRMI Gateway — multi-regional messaging corridor client.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>
