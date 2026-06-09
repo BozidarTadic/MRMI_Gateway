@@ -2,6 +2,7 @@ using MRMI.Demo.Blazor;
 using MRMI.Gateway.Client;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseStaticWebAssets();
 builder.AddServiceDefaults();
 
 builder.Services.AddRazorPages();

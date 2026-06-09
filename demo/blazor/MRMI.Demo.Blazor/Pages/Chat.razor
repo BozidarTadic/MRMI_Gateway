@@ -210,6 +210,26 @@
                         </button>
                     </div>
 
+                    <div class="money-bar money-bar-rs">
+                        <div class="money-bar-title">Send money to @peer</div>
+                        <input class="form-control form-control-sm money-amount"
+                               inputmode="decimal"
+                               placeholder="25.00"
+                               @bind="_rsMoneyAmount" @bind:event="oninput" />
+                        <select class="form-select form-select-sm money-currency" @bind="_rsMoneyCurrency">
+                            <option value="EUR">EUR</option>
+                            <option value="RSD">RSD</option>
+                            <option value="RUB">RUB</option>
+                            <option value="USD">USD</option>
+                        </select>
+                        <input class="form-control form-control-sm money-note"
+                               placeholder="Note"
+                               @bind="_rsMoneyNote" @bind:event="oninput" />
+                        <button class="btn btn-sm btn-money-rs" @onclick="SendMoneyRs" disabled="@_rsMoneySending">
+                            @(_rsMoneySending ? "…" : "Send money")
+                        </button>
+                    </div>
+
                     @if (_rsStatus is not null)
                     {
                         <div class="send-status @(_rsStatus.StartsWith("ALLOW") ? "status-ok" : "status-err")">
@@ -408,6 +428,26 @@
                                placeholder="@($"Message as {self}…")" />
                     </div>
 
+                    <div class="money-bar money-bar-ru">
+                        <div class="money-bar-title">Send money to @peer</div>
+                        <input class="form-control form-control-sm money-amount"
+                               inputmode="decimal"
+                               placeholder="25.00"
+                               @bind="_ruMoneyAmount" @bind:event="oninput" />
+                        <select class="form-select form-select-sm money-currency" @bind="_ruMoneyCurrency">
+                            <option value="EUR">EUR</option>
+                            <option value="RSD">RSD</option>
+                            <option value="RUB">RUB</option>
+                            <option value="USD">USD</option>
+                        </select>
+                        <input class="form-control form-control-sm money-note"
+                               placeholder="Note"
+                               @bind="_ruMoneyNote" @bind:event="oninput" />
+                        <button class="btn btn-sm btn-money-ru" @onclick="SendMoneyRu" disabled="@_ruMoneySending">
+                            @(_ruMoneySending ? "…" : "Send money")
+                        </button>
+                    </div>
+
                     @if (_ruStatus is not null)
                     {
                         <div class="send-status @(_ruStatus.StartsWith("ALLOW") ? "status-ok" : "status-err")">
@@ -430,6 +470,7 @@
                     <th style="width:86px">Source</th>
                     <th style="width:82px">Direction</th>
                     <th style="width:68px">Decision</th>
+                    <th style="width:94px">Schema</th>
                     <th style="width:48px">Tier</th>
                     <th style="width:110px">Reason</th>
                     <th>Message</th>
@@ -455,6 +496,9 @@
                                 @e.Decision
                             </span>
                         </td>
+                        <td class="text-muted font-monospace" style="font-size:0.68rem" title="@($"{e.SchemaType} {e.SchemaVersion}")">
+                            @ShortSchema(e.SchemaType, e.SchemaVersion)
+                        </td>
                         <td class="text-muted">@(e.TrustTier?.ToString() ?? "-")</td>
                         <td class="text-muted">@e.Reason</td>
                         <td>
@@ -476,7 +520,7 @@
                 }
                 @if (!State.Log.Any())
                 {
-                    <tr><td colspan="11" class="text-muted text-center py-2">No activity yet.</td></tr>
+                    <tr><td colspan="12" class="text-muted text-center py-2">No activity yet.</td></tr>
                 }
             </tbody>
         </table>
@@ -494,6 +538,10 @@
     private string    _rsText    = "";
     private bool      _rsSending;
     private string?   _rsStatus;
+    private string    _rsMoneyAmount = "25.00";
+    private string    _rsMoneyCurrency = "EUR";
+    private string    _rsMoneyNote = "Dinner";
+    private bool      _rsMoneySending;
 
     // RU panel state
     private string    _ruUserId  = "";
@@ -502,6 +550,10 @@
     private string    _ruText    = "";
     private bool      _ruSending;
     private string?   _ruStatus;
+    private string    _ruMoneyAmount = "25.00";
+    private string    _ruMoneyCurrency = "EUR";
+    private string    _ruMoneyNote = "Coffee";
+    private bool      _ruMoneySending;
 
     private bool _loading = false;
 
@@ -588,6 +640,38 @@
         _ruSending = false;
     }
 
+    private async Task SendMoneyRs()
+    {
+        if (_rsChatKey is null) return;
+        if (!TryParseAmount(_rsMoneyAmount, out var amount))
+        {
+            _rsStatus = "ERROR — enter a valid amount greater than 0";
+            return;
+        }
+
+        _rsMoneySending = true; _rsStatus = null;
+        var (rsId, ruId) = _rsChatKey.Value;
+        var (decision, reason) = await State.SendMoneyAsync(rsId, ruId, DemoState.RsRegion, amount, _rsMoneyCurrency, _rsMoneyNote);
+        _rsStatus = $"{decision} — {reason}";
+        _rsMoneySending = false;
+    }
+
+    private async Task SendMoneyRu()
+    {
+        if (_ruChatKey is null) return;
+        if (!TryParseAmount(_ruMoneyAmount, out var amount))
+        {
+            _ruStatus = "ERROR — enter a valid amount greater than 0";
+            return;
+        }
+
+        _ruMoneySending = true; _ruStatus = null;
+        var (rsId, ruId) = _ruChatKey.Value;
+        var (decision, reason) = await State.SendMoneyAsync(rsId, ruId, DemoState.RuRegion, amount, _ruMoneyCurrency, _ruMoneyNote);
+        _ruStatus = $"{decision} — {reason}";
+        _ruMoneySending = false;
+    }
+
     private async Task ReloadUsers()
     {
         _loading = true;
@@ -623,6 +707,16 @@
     }
 
     private static string NewChatHint(int count) => count == 0 ? "No contacts" : "Select a contact";
+
+    private static string ShortSchema(string schemaType, string schemaVersion)
+    {
+        var type = schemaType.Length > 12 ? schemaType[..12] + "…" : schemaType;
+        return $"{type}/{schemaVersion}";
+    }
+
+    private static bool TryParseAmount(string value, out decimal amount) =>
+        decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out amount)
+        && amount > 0;
 
     private static char SafeInitial(string value)
         => string.IsNullOrWhiteSpace(value) ? '?' : value.Trim()[0];

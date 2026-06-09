@@ -26,6 +26,7 @@
                     <th style="width:90px">Time</th>
                     <th style="width:88px">Direction</th>
                     <th style="width:70px">Decision</th>
+                    <th style="width:110px">Schema</th>
                     <th style="width:52px">Tier</th>
                     <th style="width:120px">Reason</th>
                     <th>Message</th>
@@ -43,6 +44,9 @@
                         <td>@e.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
                         <td>@e.Direction</td>
                         <td><span class="badge @BadgeClass(e.Decision)">@e.Decision</span></td>
+                        <td class="text-muted font-monospace" style="font-size:0.68rem" title="@($"{e.SchemaType} {e.SchemaVersion}")">
+                            @ShortSchema(e.SchemaType, e.SchemaVersion)
+                        </td>
                         <td class="text-muted">@TextOrDash(e.TrustTier)</td>
                         <td class="text-muted">@e.Reason</td>
                         <td>@(e.Payload is not null ? (e.Payload.Length > 50 ? e.Payload[..50] + "…" : e.Payload) : "")</td>
@@ -60,7 +64,7 @@
                 @if (!Filtered.Any())
                 {
                     <tr>
-                        <td colspan="11" class="text-muted text-center py-3">
+                        <td colspan="12" class="text-muted text-center py-3">
                             No entries yet — send a message from the Chat page.
                         </td>
                     </tr>
@@ -93,6 +97,12 @@
     };
 
     private static string TextOrDash(uint? value) => value?.ToString() ?? "-";
+
+    private static string ShortSchema(string schemaType, string schemaVersion)
+    {
+        var type = schemaType.Length > 14 ? schemaType[..14] + "…" : schemaType;
+        return $"{type}/{schemaVersion}";
+    }
 
     protected override void OnInitialized() => State.OnChanged += OnStateChanged;
     private void OnStateChanged() => InvokeAsync(StateHasChanged);

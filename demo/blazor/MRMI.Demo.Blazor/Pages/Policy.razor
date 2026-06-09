@@ -1,4 +1,5 @@
 @page "/policy"
+@using MRMI.Gateway.Client
 @inject DemoState State
 @implements IDisposable
 
@@ -36,6 +37,14 @@
                     @onclick="() => RunPreset(DemoScenario.DuplicateIdempotency)" disabled="@_running">
                 Duplicate key
             </button>
+            <button type="button" class="btn btn-sm btn-outline-primary"
+                    @onclick="() => RunPreset(DemoScenario.Iso20022Payment)" disabled="@_running">
+                ISO 20022
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-dark"
+                    @onclick="() => RunPreset(DemoScenario.CustomGovDocs)" disabled="@_running">
+                Custom adapter
+            </button>
         </div>
 
         <div class="section-title" style="margin-top:0.85rem">Custom scenario</div>
@@ -62,6 +71,29 @@
                 <input class="form-control form-control-sm" type="number" min="0" max="9"
                        @bind="_trustTier" @bind:event="oninput" />
             </label>
+            <label>
+                <span>Schema type</span>
+                <select class="form-select form-select-sm" @bind="_schemaType">
+                    <option value="messaging">messaging</option>
+                    <option value="iso20022">iso20022</option>
+                    <option value="hl7fhir">hl7fhir</option>
+                    <option value="edifact">edifact</option>
+                    <option value="custom">custom</option>
+                </select>
+            </label>
+            <label>
+                <span>Schema version</span>
+                <input class="form-control form-control-sm"
+                       @bind="_schemaVersion" @bind:event="oninput" />
+            </label>
+            @if (_schemaType == "custom")
+            {
+                <label>
+                    <span>Custom schema id</span>
+                    <input class="form-control form-control-sm"
+                           @bind="_customSchemaId" @bind:event="oninput" />
+                </label>
+            }
             <label class="scenario-payload">
                 <span>Payload</span>
                 <input class="form-control form-control-sm"
@@ -90,6 +122,8 @@
                     <div><span>node</span><strong>@_result.Node</strong></div>
                     <div><span>node id</span><strong>@TextOrDash(_result.NodeId)</strong></div>
                     <div><span>profile</span><strong>@TextOrDash(_result.Profile)</strong></div>
+                    <div><span>schema type</span><strong>@_result.SchemaType</strong></div>
+                    <div><span>schema version</span><strong>@_result.SchemaVersion</strong></div>
                     <div><span>trust tier</span><strong>@_result.TrustTier</strong></div>
                     <div><span>local audit root</span><code title="@_result.AuditRootHash">@ShortHash(_result.AuditRootHash)</code></div>
                     <div><span>peer audit root</span><code title="@_result.PeerAuditRootHash">@ShortHash(_result.PeerAuditRootHash)</code></div>
@@ -127,6 +161,9 @@
     private string _recipientRegion = DemoState.RuRegion;
     private int    _trustTier       = 1;
     private string _payload         = "";
+    private string _schemaType      = "messaging";
+    private string _schemaVersion   = "1.0.0";
+    private string _customSchemaId  = "gov-rs-doc-exchange";
 
     private record HistoryEntry(string Label, DateTimeOffset Timestamp, string Decision, string SenderRegion, string RecipientRegion, string Reason);
     private readonly List<HistoryEntry> _history = [];
@@ -147,6 +184,8 @@
             DemoScenario.LowTrustTier               => "Low trust tier",
             DemoScenario.UnknownRegion              => "Unknown region",
             DemoScenario.DuplicateIdempotency       => "Duplicate key",
+            DemoScenario.Iso20022Payment            => "ISO 20022",
+            DemoScenario.CustomGovDocs              => "Custom adapter",
             _                                       => "Preset",
         };
         await RunCustom(label);
@@ -159,7 +198,10 @@
             _name, _slug, _node,
             Norm(_senderRegion), Norm(_recipientRegion),
             _trustTier < 0 ? 0u : (uint)_trustTier,
-            string.IsNullOrWhiteSpace(_payload) ? "(empty)" : _payload);
+            string.IsNullOrWhiteSpace(_payload) ? "(empty)" : _payload,
+            SelectedSchemaType(),
+            string.IsNullOrWhiteSpace(_schemaVersion) ? "1.0.0" : _schemaVersion.Trim(),
+            _schemaType == "custom" ? _customSchemaId.Trim() : null);
         _result = await State.RunScenarioAsync(request);
         _history.Insert(0, new(label, DateTimeOffset.UtcNow, _result.Decision, _result.SenderRegion, _result.RecipientRegion, _result.Reason));
         if (_history.Count > 20) _history.RemoveAt(_history.Count - 1);
@@ -180,6 +222,8 @@
                 Slug = "duplicate",
                 Payload = "First and second sends reuse the same idempotency key",
             },
+            DemoScenario.Iso20022Payment           => ScenarioRunRequest.Iso20022Payment(),
+            DemoScenario.CustomGovDocs             => ScenarioRunRequest.CustomGovDocs(),
             _ => ScenarioRunRequest.BlockedJurisdiction(),
         };
         ApplyRequest(r);
@@ -190,7 +234,26 @@
         _name = r.Name; _slug = r.Slug; _node = r.Node;
         _senderRegion = r.SenderRegion; _recipientRegion = r.RecipientRegion;
         _trustTier = (int)r.TrustTier; _payload = r.Payload;
+        _schemaType = r.SchemaType switch
+        {
+            SchemaType.Iso20022 => "iso20022",
+            SchemaType.Hl7Fhir  => "hl7fhir",
+            SchemaType.Edifact  => "edifact",
+            SchemaType.Custom   => "custom",
+            _                   => "messaging",
+        };
+        _schemaVersion = r.SchemaVersion;
+        _customSchemaId = string.IsNullOrWhiteSpace(r.CustomSchemaId) ? "gov-rs-doc-exchange" : r.CustomSchemaId;
     }
+
+    private SchemaType SelectedSchemaType() => _schemaType switch
+    {
+        "iso20022" => SchemaType.Iso20022,
+        "hl7fhir"  => SchemaType.Hl7Fhir,
+        "edifact"  => SchemaType.Edifact,
+        "custom"   => SchemaType.Custom,
+        _          => SchemaType.Messaging,
+    };
 
     private static string Norm(string v) =>
         string.IsNullOrWhiteSpace(v) ? "ZZ" : v.Trim().ToUpperInvariant();

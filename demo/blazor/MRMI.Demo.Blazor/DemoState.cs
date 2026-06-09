@@ -259,6 +259,34 @@ public sealed class DemoState : IAsyncDisposable
         return (result.Decision, result.Reason);
     }
 
+    public async Task<(string Decision, string Reason)> SendMoneyAsync(
+        string rsId,
+        string ruId,
+        string fromRegion,
+        decimal amount,
+        string currency,
+        string? note)
+    {
+        var toRegion = fromRegion == RsRegion ? RuRegion : RsRegion;
+        var key = $"money-{_sessionPrefix}:{rsId}:{ruId}:{Interlocked.Increment(ref _seqCounter):D6}";
+        var client = fromRegion == RsRegion ? RsClient : RuClient;
+        var normalizedCurrency = string.IsNullOrWhiteSpace(currency) ? "EUR" : currency.Trim().ToUpperInvariant();
+        var trimmedNote = string.IsNullOrWhiteSpace(note) ? "friend transfer" : note.Trim();
+        var payload = $"Payment {amount:0.00} {normalizedCurrency} - {trimmedNote}";
+        var result = await SendEnvelopeAsync(
+            client,
+            key,
+            fromRegion,
+            toRegion,
+            2,
+            payload,
+            "Money",
+            $"Send money {amount:0.00} {normalizedCurrency}",
+            SchemaType.Iso20022,
+            "2019");
+        return (result.Decision, result.Reason);
+    }
+
     public async Task<ScenarioResult> RunScenarioAsync(DemoScenario scenario)
     {
         var request = scenario switch
@@ -270,8 +298,11 @@ public sealed class DemoState : IAsyncDisposable
             DemoScenario.DuplicateIdempotency => ScenarioRunRequest.AllowedCorridor() with
             {
                 Name = "Duplicate idempotency key",
+                Slug = "duplicate",
                 Payload = "First and second sends reuse the same idempotency key",
             },
+            DemoScenario.Iso20022Payment => ScenarioRunRequest.Iso20022Payment(),
+            DemoScenario.CustomGovDocs => ScenarioRunRequest.CustomGovDocs(),
             _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null),
         };
 
@@ -296,7 +327,10 @@ public sealed class DemoState : IAsyncDisposable
             request.SenderRegion,
             request.RecipientRegion,
             request.TrustTier,
-            request.Payload);
+            request.Payload,
+            request.SchemaType,
+            request.SchemaVersion,
+            request.CustomSchemaId);
     }
 
     public async Task<IReadOnlyList<NodeSnapshot>> LoadNodeSnapshotsAsync()
@@ -339,9 +373,12 @@ public sealed class DemoState : IAsyncDisposable
         string fromRegion,
         string toRegion,
         uint trustTier,
-        string text)
+        string text,
+        SchemaType schemaType = SchemaType.Messaging,
+        string schemaVersion = "1.0.0",
+        string? customSchemaId = null)
     {
-        var result = await SendEnvelopeAsync(client, key, fromRegion, toRegion, trustTier, text, "Scenario", name);
+        var result = await SendEnvelopeAsync(client, key, fromRegion, toRegion, trustTier, text, "Scenario", name, schemaType, schemaVersion, customSchemaId);
         return new ScenarioResult(
             name,
             result.Decision,
@@ -355,7 +392,9 @@ public sealed class DemoState : IAsyncDisposable
             result.AuditRootHash,
             result.PeerAuditRootHash,
             result.Profile,
-            result.NodeId);
+            result.NodeId,
+            result.SchemaType,
+            result.SchemaVersion);
     }
 
     private async Task<ScenarioResult> RunDuplicateScenarioAsync(ScenarioRunRequest request)
@@ -363,8 +402,8 @@ public sealed class DemoState : IAsyncDisposable
         var key = $"scenario-{_sessionPrefix}:duplicate:{Interlocked.Increment(ref _seqCounter):D6}";
         var nodeLabel = string.Equals(request.Node, "RU", StringComparison.OrdinalIgnoreCase) ? "RU" : "RS";
         var client = nodeLabel == "RU" ? RuClient : RsClient;
-        await SendEnvelopeAsync(client, key, request.SenderRegion, request.RecipientRegion, request.TrustTier, request.Payload, "Scenario", request.Name);
-        var result = await SendEnvelopeAsync(client, key, request.SenderRegion, request.RecipientRegion, request.TrustTier, request.Payload, "Scenario", request.Name);
+        await SendEnvelopeAsync(client, key, request.SenderRegion, request.RecipientRegion, request.TrustTier, request.Payload, "Scenario", request.Name, request.SchemaType, request.SchemaVersion, request.CustomSchemaId);
+        var result = await SendEnvelopeAsync(client, key, request.SenderRegion, request.RecipientRegion, request.TrustTier, request.Payload, "Scenario", request.Name, request.SchemaType, request.SchemaVersion, request.CustomSchemaId);
         return new ScenarioResult(
             request.Name,
             result.Decision,
@@ -378,7 +417,9 @@ public sealed class DemoState : IAsyncDisposable
             result.AuditRootHash,
             result.PeerAuditRootHash,
             result.Profile,
-            result.NodeId);
+            result.NodeId,
+            result.SchemaType,
+            result.SchemaVersion);
     }
 
     private async Task<ScenarioSendResult> SendEnvelopeAsync(
@@ -389,8 +430,13 @@ public sealed class DemoState : IAsyncDisposable
         uint trustTier,
         string text,
         string? source = null,
-        string? label = null)
+        string? label = null,
+        SchemaType schemaType = SchemaType.Messaging,
+        string schemaVersion = "1.0.0",
+        string? customSchemaId = null)
     {
+        var normalizedSchemaVersion = string.IsNullOrWhiteSpace(schemaVersion) ? "1.0.0" : schemaVersion.Trim();
+        var schemaLabel = SchemaLabel(schemaType, customSchemaId);
         try
         {
             var result = await client.SendAsync(new SendEnvelopeRequest
@@ -400,6 +446,9 @@ public sealed class DemoState : IAsyncDisposable
                 RecipientRegion = toRegion,
                 TrustTier = trustTier,
                 Payload = System.Text.Encoding.UTF8.GetBytes(text),
+                SchemaType = schemaType,
+                SchemaVersion = normalizedSchemaVersion,
+                CustomSchemaId = customSchemaId,
             });
 
             lock (_lock)
@@ -412,7 +461,9 @@ public sealed class DemoState : IAsyncDisposable
                     Profile: result.Profile, NodeId: result.NodeId,
                     TrustTier: trustTier,
                     Source: source ?? InferLogSource(key),
-                    Label: label));
+                    Label: label,
+                    SchemaType: schemaLabel,
+                    SchemaVersion: normalizedSchemaVersion));
                 if (_log.Count > 200) _log.RemoveAt(_log.Count - 1);
             }
             OnChanged?.Invoke();
@@ -422,7 +473,9 @@ public sealed class DemoState : IAsyncDisposable
                 result.AuditRootHash,
                 result.PeerAuditRootHash,
                 result.Profile,
-                result.NodeId);
+                result.NodeId,
+                schemaLabel,
+                normalizedSchemaVersion);
         }
         catch (Exception ex)
         {
@@ -433,11 +486,13 @@ public sealed class DemoState : IAsyncDisposable
                     Payload: text,
                     TrustTier: trustTier,
                     Source: source ?? InferLogSource(key),
-                    Label: label));
+                    Label: label,
+                    SchemaType: schemaLabel,
+                    SchemaVersion: normalizedSchemaVersion));
                 if (_log.Count > 200) _log.RemoveAt(_log.Count - 1);
             }
             OnChanged?.Invoke();
-            return new ScenarioSendResult("ERROR", ex.Message, null, null, null, null);
+            return new ScenarioSendResult("ERROR", ex.Message, null, null, null, null, schemaLabel, normalizedSchemaVersion);
         }
     }
 
@@ -481,9 +536,19 @@ public sealed class DemoState : IAsyncDisposable
     {
         if (key.StartsWith("scenario-", StringComparison.OrdinalIgnoreCase)) return "Scenario";
         if (key.StartsWith("direct-", StringComparison.OrdinalIgnoreCase)) return "Direct";
+        if (key.StartsWith("money-", StringComparison.OrdinalIgnoreCase)) return "Money";
         if (key.StartsWith("demo-", StringComparison.OrdinalIgnoreCase)) return "Chat";
         return "Envelope";
     }
+
+    public static string SchemaLabel(SchemaType schemaType, string? customSchemaId = null) => schemaType switch
+    {
+        SchemaType.Iso20022 => "iso20022",
+        SchemaType.Hl7Fhir  => "hl7fhir",
+        SchemaType.Edifact  => "edifact",
+        SchemaType.Custom   => $"custom:{(string.IsNullOrWhiteSpace(customSchemaId) ? "gov-rs-doc-exchange" : customSchemaId.Trim())}",
+        _                   => "messaging",
+    };
 
     // ── Audit verification ───────────────────────────────────────────────────
 
@@ -616,6 +681,8 @@ public enum DemoScenario
     LowTrustTier,
     UnknownRegion,
     DuplicateIdempotency,
+    Iso20022Payment,
+    CustomGovDocs,
 }
 
 public sealed record ScenarioRunRequest(
@@ -625,7 +692,10 @@ public sealed record ScenarioRunRequest(
     string SenderRegion,
     string RecipientRegion,
     uint TrustTier,
-    string Payload)
+    string Payload,
+    SchemaType SchemaType = SchemaType.Messaging,
+    string SchemaVersion = "1.0.0",
+    string? CustomSchemaId = null)
 {
     public static ScenarioRunRequest AllowedCorridor() => new(
         "Allowed corridor",
@@ -662,6 +732,29 @@ public sealed record ScenarioRunRequest(
         "ZZ",
         1,
         "Unknown recipient region should be denied by policy");
+
+    public static ScenarioRunRequest Iso20022Payment() => new(
+        "ISO 20022 payment",
+        "iso20022-payment",
+        "RS",
+        DemoState.RsRegion,
+        DemoState.RuRegion,
+        2,
+        "pacs.008 credit transfer: RS debtor -> RU creditor, EUR 1250.00",
+        SchemaType.Iso20022,
+        "2019");
+
+    public static ScenarioRunRequest CustomGovDocs() => new(
+        "Custom gov document exchange",
+        "custom-gov-docs",
+        "RS",
+        DemoState.RsRegion,
+        DemoState.RuRegion,
+        2,
+        "custom adapter payload: signed civil-registry document",
+        SchemaType.Custom,
+        "1.0.0",
+        "gov-rs-doc-exchange");
 }
 
 public sealed record ScenarioResult(
@@ -677,7 +770,9 @@ public sealed record ScenarioResult(
     string? AuditRootHash,
     string? PeerAuditRootHash,
     string? Profile,
-    string? NodeId
+    string? NodeId,
+    string SchemaType,
+    string SchemaVersion
 );
 
 public sealed record ScenarioSendResult(
@@ -686,7 +781,9 @@ public sealed record ScenarioSendResult(
     string? AuditRootHash,
     string? PeerAuditRootHash,
     string? Profile,
-    string? NodeId
+    string? NodeId,
+    string SchemaType,
+    string SchemaVersion
 );
 
 public sealed record NodeSnapshot(
@@ -761,7 +858,9 @@ public sealed record LogEntry(
     string? NodeId = null,
     uint? TrustTier = null,
     string? Source = null,
-    string? Label = null
+    string? Label = null,
+    string SchemaType = "messaging",
+    string SchemaVersion = "1.0.0"
 )
 {
     public bool IsAllow => Decision == "ALLOW";

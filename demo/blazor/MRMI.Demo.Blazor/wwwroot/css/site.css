@@ -363,6 +363,10 @@ a, .btn-link { color: #0071c1; }
     background: #495057;
 }
 
+.log-source-money {
+    background: #0f766e;
+}
+
 .log-label {
     display: block;
     color: #c9b6ff;
